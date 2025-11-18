@@ -1,0 +1,539 @@
+import { createClient } from '@/lib/supabase/client'
+
+// Type definitions matching your database schema
+export interface User {
+  id: string
+  staff_code?: string
+  username: string
+  password_hash?: string // Not included in queries by default for security
+  role: 'admin' | 'staff' | 'read_only'
+  can_edit_bills: boolean
+  can_edit_stock: boolean
+  can_authorize_nongst: boolean
+  twofa_enabled: boolean
+  phone?: string
+  email?: string
+  created_at: string
+}
+
+export interface Customer {
+  id: number
+  customer_code: string
+  name?: string
+  phone?: string
+  email?: string
+  address?: string
+  notes?: string
+  created_at: string
+}
+
+export interface Item {
+  id: string
+  barcode: string
+  item_name: string
+  category?: string
+  weight?: number
+  purity?: string
+  making_charges?: number
+  stone_type?: string
+  hsn_code?: string
+  gst_rate?: number
+  price_per_gram?: number
+  net_price?: number
+  stock_status: 'in_stock' | 'reserved' | 'sold' | 'returned'
+  location?: string
+  remarks?: string
+  created_at: string
+}
+
+export interface Bill {
+  id: number
+  bill_no: string
+  bill_date: string
+  customer_id?: number
+  staff_id?: string
+  nongst_auth_id?: string
+  sale_type: 'gst' | 'non_gst'
+  subtotal?: number
+  gst_amount?: number
+  cgst?: number
+  sgst?: number
+  igst?: number
+  discount?: number
+  grand_total?: number
+  payment_method?: string
+  payment_reference?: string
+  bill_status: 'draft' | 'finalized' | 'cancelled'
+  remarks?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface BillItem {
+  id: string
+  bill_id: number
+  barcode?: string
+  item_name?: string
+  weight?: number
+  rate?: number
+  making_charges?: number
+  gst_rate?: number
+  line_total?: number
+}
+
+export interface GoldRate {
+  id: number
+  rate_per_gram: number
+  effective_date: string
+}
+
+// User queries
+export async function getUserByUsername(username: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('username', username)
+    .single()
+  
+  if (error) throw error
+  return data as User
+}
+
+export async function getUserById(id: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', id)
+    .single()
+  
+  if (error) throw error
+  return data as User
+}
+
+export async function getUsers() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .order('created_at', { ascending: false })
+  
+  if (error) throw error
+  return data as User[]
+}
+
+export async function createUser(user: Omit<User, 'id' | 'created_at'>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('users')
+    .insert(user)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data as User
+}
+
+export async function updateUser(id: string, updates: Partial<User>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('users')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data as User
+}
+
+export async function deleteUser(id: string) {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('users')
+    .delete()
+    .eq('id', id)
+  
+  if (error) throw error
+}
+
+// Audit Log interface and queries
+export interface AuditLog {
+  id: number
+  user_id?: string
+  action: string
+  entity_type: string
+  entity_id?: string
+  details?: string
+  ip_address?: string
+  user_agent?: string
+  created_at: string
+}
+
+export async function getAuditLogs(filters?: {
+  userId?: string
+  action?: string
+  entityType?: string
+  startDate?: string
+  endDate?: string
+  limit?: number
+}) {
+  const supabase = createClient()
+  let query = supabase
+    .from('audit_log')
+    .select('*, users(username)')
+    .order('created_at', { ascending: false })
+  
+  if (filters?.userId) {
+    query = query.eq('user_id', filters.userId)
+  }
+  if (filters?.action) {
+    query = query.eq('action', filters.action)
+  }
+  if (filters?.entityType) {
+    query = query.eq('entity_type', filters.entityType)
+  }
+  if (filters?.startDate) {
+    query = query.gte('created_at', filters.startDate)
+  }
+  if (filters?.endDate) {
+    query = query.lte('created_at', filters.endDate)
+  }
+  if (filters?.limit) {
+    query = query.limit(filters.limit)
+  }
+  
+  const { data, error } = await query
+  
+  if (error) throw error
+  return data as (AuditLog & { users?: { username: string } })[]
+}
+
+export async function createAuditLog(log: Omit<AuditLog, 'id' | 'created_at'>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('audit_log')
+    .insert(log)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data as AuditLog
+}
+
+// Customer queries
+export async function getCustomers() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('customers')
+    .select('*')
+    .order('created_at', { ascending: false })
+  
+  if (error) throw error
+  return data as Customer[]
+}
+
+export async function getCustomerById(id: number) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('customers')
+    .select('*')
+    .eq('id', id)
+    .single()
+  
+  if (error) throw error
+  return data as Customer
+}
+
+export async function createCustomer(customer: Omit<Customer, 'id' | 'customer_code' | 'created_at'>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('customers')
+    .insert(customer)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data as Customer
+}
+
+export async function updateCustomer(id: number, updates: Partial<Customer>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('customers')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data as Customer
+}
+
+export async function deleteCustomer(id: number) {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('customers')
+    .delete()
+    .eq('id', id)
+  
+  if (error) throw error
+}
+
+// Item/Inventory queries
+export async function getItems() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('items')
+    .select('*')
+    .order('created_at', { ascending: false })
+  
+  if (error) throw error
+  return data as Item[]
+}
+
+export async function getItemByBarcode(barcode: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('items')
+    .select('*')
+    .eq('barcode', barcode)
+    .single()
+  
+  if (error) throw error
+  return data as Item
+}
+
+export async function createItem(item: Omit<Item, 'id' | 'created_at'>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('items')
+    .insert(item)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data as Item
+}
+
+export async function updateItem(id: string, updates: Partial<Item>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('items')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data as Item
+}
+
+export async function deleteItem(id: string) {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('items')
+    .delete()
+    .eq('id', id)
+  
+  if (error) throw error
+}
+
+// Bill queries
+export async function getBills() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('bills')
+    .select('*, customers(*), users(*)')
+    .order('created_at', { ascending: false })
+  
+  if (error) throw error
+  return data
+}
+
+export async function getBillById(id: number) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('bills')
+    .select('*, customers(*), users(*), bill_items(*)')
+    .eq('id', id)
+    .single()
+  
+  if (error) throw error
+  return data
+}
+
+export async function createBill(bill: Omit<Bill, 'id' | 'bill_no' | 'created_at' | 'updated_at'>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('bills')
+    .insert(bill)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data as Bill
+}
+
+export async function updateBill(id: number, updates: Partial<Bill>) {
+  const supabase = createClient()
+  const supabaseUpdates = { ...updates, updated_at: new Date().toISOString() }
+  const { data, error } = await supabase
+    .from('bills')
+    .update(supabaseUpdates)
+    .eq('id', id)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data as Bill
+}
+
+export async function deleteBill(id: number) {
+  const supabase = createClient()
+  // First delete bill items
+  await supabase.from('bill_items').delete().eq('bill_id', id)
+  // Then delete the bill
+  const { error } = await supabase.from('bills').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function getBillItems(billId: number) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('bill_items')
+    .select('*')
+    .eq('bill_id', billId)
+    .order('id', { ascending: true })
+  
+  if (error) throw error
+  return data as BillItem[]
+}
+
+export async function createBillItems(billId: number, items: Omit<BillItem, 'id' | 'bill_id'>[]) {
+  const supabase = createClient()
+  const billItems = items.map(item => ({ ...item, bill_id: billId }))
+  const { data, error } = await supabase
+    .from('bill_items')
+    .insert(billItems)
+    .select()
+  
+  if (error) throw error
+  return data as BillItem[]
+}
+
+// Purchase Bill queries
+export async function getPurchaseBills() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('purchase_bills')
+    .select('*, customers(*), users(*)')
+    .order('created_at', { ascending: false })
+  
+  if (error) throw error
+  return data
+}
+
+export async function createPurchaseBill(bill: any) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('purchase_bills')
+    .insert(bill)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data
+}
+
+// Returns queries
+export async function getReturns() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('returns')
+    .select('*, bills(*), items(*), users(*)')
+    .order('created_at', { ascending: false })
+  
+  if (error) throw error
+  return data
+}
+
+export async function createReturn(returnData: any) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('returns')
+    .insert(returnData)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data
+}
+
+// Gold Rate queries
+export async function getLatestGoldRate() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('gold_rates')
+    .select('*')
+    .order('effective_date', { ascending: false })
+    .limit(1)
+    .single()
+  
+  if (error && error.code !== 'PGRST116') throw error
+  return data as GoldRate | null
+}
+
+export async function getGoldRateByDate(date: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('gold_rates')
+    .select('*')
+    .eq('effective_date', date)
+    .single()
+  
+  if (error && error.code !== 'PGRST116') throw error
+  return data as GoldRate | null
+}
+
+export async function getGoldRates(limit: number = 30) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('gold_rates')
+    .select('*')
+    .order('effective_date', { ascending: false })
+    .limit(limit)
+  
+  if (error) throw error
+  return data as GoldRate[]
+}
+
+export async function createGoldRate(rate: Omit<GoldRate, 'id'>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('gold_rates')
+    .insert({
+      rate_per_gram: rate.rate_per_gram,
+      effective_date: rate.effective_date || new Date().toISOString().split('T')[0],
+    })
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data as GoldRate
+}
+
+export async function updateGoldRate(id: number, updates: Partial<GoldRate>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('gold_rates')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+  
+  if (error) throw error
+  return data as GoldRate
+}
+
