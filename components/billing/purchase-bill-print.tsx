@@ -36,18 +36,23 @@ export function PurchaseBillPrint({
     return `${day}/${month}/${year}`
   }
 
-  // Format currency without decimal if whole number
-  const formatCurrency = (amount: number) => {
-    if (amount % 1 === 0) {
-      return amount.toLocaleString('en-IN')
-    }
-    return amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  // Format weight to show 3 decimal places
+  const formatWeight = (weight: number) => {
+    return weight.toFixed(3)
   }
 
-  // Calculate GST (1.5% CGST + 1.5% SGST = 3% total)
-  const cgst = oldGoldExchange.total * 0.015
-  const sgst = oldGoldExchange.total * 0.015
-  const totalWithGST = oldGoldExchange.total + cgst + sgst
+  // Format rate (no decimals if whole number, otherwise 2 decimals, with commas)
+  const formatRate = (rate: number) => {
+    if (rate % 1 === 0) {
+      return rate.toLocaleString('en-IN')
+    }
+    return rate.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+
+  // Format amount (with commas, 2 decimals)
+  const formatAmount = (amount: number) => {
+    return amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
 
   return (
     <>
@@ -108,14 +113,14 @@ export function PurchaseBillPrint({
         .purchase-top-header {
           display: flex;
           justify-content: space-between;
-          font-size: 16px;
+          font-size: 20px;
           font-weight: bold;
         }
 
         .purchase-title {
           margin-top: 4mm;
           text-align: center;
-          font-size: 26px;
+          font-size: 36px;
           font-weight: bold;
           color: #d40000;
           letter-spacing: 1px;
@@ -125,45 +130,48 @@ export function PurchaseBillPrint({
           display: flex;
           justify-content: space-between;
           margin-top: 3mm;
-          font-size: 14px;
+          font-size: 18px;
         }
 
         .purchase-table {
           width: 100%;
           margin-top: 6mm;
           border-collapse: collapse;
-          font-size: 14px;
+          font-size: 18px;
           font-weight: bold;
         }
 
         .purchase-table th,
         .purchase-table td {
           border: 1px solid #000;
-          padding: 4px 6px;
+          padding: 8px 10px;
+          text-align: center;
         }
 
         .purchase-big-col {
           height: 45mm;
-          vertical-align: top;
+          vertical-align: middle;
+          text-align: center;
         }
 
         .purchase-pink-write {
-          font-size: 18px;
+          font-size: 24px;
           font-weight: bold;
         }
 
         .purchase-footer-row {
           margin-top: 8mm;
           display: flex;
-          justify-content: space-between;
-          font-size: 16px;
+          justify-content: center;
+          gap: 40px;
+          font-size: 20px;
           font-weight: bold;
         }
 
         .purchase-signature {
           margin-top: 10mm;
-          text-align: right;
-          font-size: 16px;
+          text-align: center;
+          font-size: 20px;
           font-weight: bold;
         }
 
@@ -188,7 +196,10 @@ export function PurchaseBillPrint({
               </div>
             </div>
 
-            <div className="purchase-title">Pragya Jewels</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '12px', marginTop: '4mm' }}>
+              <img src="/Logo.png" alt="Pragya Jewels Logo" style={{ height: '50px', width: 'auto', objectFit: 'contain' }} />
+              <div className="purchase-title" style={{ marginTop: 0 }}>Pragya Jewels</div>
+            </div>
 
             <div className="purchase-sub-info">
               <div>Phone: 25807958</div>
@@ -221,22 +232,22 @@ export function PurchaseBillPrint({
                   </td>
                   <td className="purchase-pink-write">{oldGoldExchange.hsn_code || '7113'}</td>
                   <td className="purchase-pink-write">
-                    {oldGoldExchange.weight || parseFloat(oldGoldExchange.weightInput) || 0}
+                    {formatWeight(oldGoldExchange.weight || parseFloat(oldGoldExchange.weightInput) || 0)}
                   </td>
                   <td className="purchase-pink-write">{oldGoldExchange.purity || '-'}</td>
                   <td className="purchase-pink-write">
-                    {formatCurrency(oldGoldExchange.rate || parseFloat(oldGoldExchange.rateInput) || 0)}
+                    {formatRate(oldGoldExchange.rate || parseFloat(oldGoldExchange.rateInput) || 0)}
                   </td>
-                  <td className="purchase-pink-write">{formatCurrency(oldGoldExchange.total)}</td>
+                  <td className="purchase-pink-write">{formatAmount(oldGoldExchange.total)}</td>
                 </tr>
               </tbody>
             </table>
 
             <div className="purchase-footer-row">
-              <div>CGST 1.5% — {formatCurrency(cgst)}</div>
-              <div>SGST 1.5% — {formatCurrency(sgst)}</div>
+              <div>CGST 1.5% —</div>
+              <div>SGST 1.5% —</div>
               <div>
-                Total: <span className="purchase-pink-write">{formatCurrency(totalWithGST)}</span>
+                Total: <span className="purchase-pink-write">{formatAmount(oldGoldExchange.total)}</span>
               </div>
             </div>
 

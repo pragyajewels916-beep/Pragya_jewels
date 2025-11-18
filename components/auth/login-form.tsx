@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -67,9 +68,15 @@ export function LoginForm({ onLogin }: LoginFormProps) {
       <Card className="w-full max-w-md border-2 border-primary/20">
         <div className="p-8">
           {/* Header */}
-          <div className="text-center mb-8">
-            <div className="w-12 h-12 bg-primary rounded-lg mx-auto mb-4 flex items-center justify-center text-white font-bold text-xl">
-              J
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <Image
+                src="/Logo.png"
+                alt="Pragya Jewels Logo"
+                width={60}
+                height={60}
+                className="object-contain"
+              />
             </div>
             <h1 className="text-3xl font-bold text-foreground mb-2">Jewelry ERP</h1>
             <p className="text-muted-foreground">Management System</p>

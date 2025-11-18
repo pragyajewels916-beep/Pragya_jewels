@@ -10,6 +10,7 @@ import { deleteBill, getBillItems, updateBill } from '@/lib/db/queries'
 import { toast } from '@/components/ui/use-toast'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import * as XLSX from 'xlsx'
 
 interface BillWithRelations extends Bill {
   customers?: Customer | null
@@ -53,6 +54,12 @@ export default function SalesPage() {
   const [saleTypeFilter, setSaleTypeFilter] = useState<'all' | 'gst' | 'non_gst'>('all')
   const [staffFilter, setStaffFilter] = useState<string>('all')
   const [staffList, setStaffList] = useState<Array<{ id: string; username: string }>>([])
+  
+  // Reports
+  const [reportMonth, setReportMonth] = useState<string>(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  })
 
   useEffect(() => {
     const storedUser = sessionStorage.getItem('user')
@@ -526,6 +533,136 @@ export default function SalesPage() {
                 Clear
               </Button>
             </div>
+          </div>
+        </Card>
+
+        {/* Reports Section */}
+        <Card className="p-4 mb-4 border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-primary text-lg">📊</span>
+            <h2 className="text-base font-semibold text-foreground">Reports</h2>
+          </div>
+          <div className="flex items-end gap-3">
+            <div className="min-w-[200px]">
+              <label className="text-xs font-medium text-foreground mb-1 block">Select Month</label>
+              <Input
+                type="month"
+                value={reportMonth}
+                onChange={(e) => setReportMonth(e.target.value)}
+                className="h-9 text-sm"
+              />
+            </div>
+            <Button
+              onClick={async () => {
+                try {
+                  const supabase = createClient()
+                  const [year, month] = reportMonth.split('-')
+                  const startDate = `${year}-${month}-01`
+                  // Get last day of the month
+                  const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate()
+                  const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`
+                  
+                  // Fetch bills for the selected month
+                  let query = supabase
+                    .from('bills')
+                    .select(`
+                      *,
+                      customers(*),
+                      users(id, username, role)
+                    `)
+                    .gte('bill_date', startDate)
+                    .lte('bill_date', endDate)
+                    .order('bill_date', { ascending: false })
+
+                  if (userRole === 'staff') {
+                    query = query.eq('sale_type', 'gst')
+                  }
+
+                  const { data: monthlyBills, error } = await query
+
+                  if (error) {
+                    throw error
+                  }
+
+                  if (!monthlyBills || monthlyBills.length === 0) {
+                    toast({
+                      title: 'No Data',
+                      description: 'No bills found for the selected month',
+                      variant: 'destructive',
+                    })
+                    return
+                  }
+
+                  // Prepare data for Excel
+                  const excelData = monthlyBills.map((bill: BillWithRelations) => {
+                    const customer = bill.customers as Customer | null
+                    const staff = bill.users as { username: string } | null
+                    
+                    // Parse payment methods if stored as JSON
+                    let paymentMethodStr = ''
+                    if (bill.payment_method) {
+                      try {
+                        const paymentMethods = JSON.parse(bill.payment_method)
+                        if (Array.isArray(paymentMethods)) {
+                          paymentMethodStr = paymentMethods.map((p: any) => {
+                            const typeLabel = p.type === 'cash' ? 'Cash' :
+                              p.type === 'card' ? 'Card' :
+                              p.type === 'upi' ? 'UPI' :
+                              p.type === 'cheque' ? 'Cheque' :
+                              p.type === 'bank_transfer' ? 'Bank Transfer' : 'Other'
+                            return `${typeLabel}: ₹${parseFloat(p.amount || 0).toFixed(2)}`
+                          }).join(', ')
+                        } else {
+                          paymentMethodStr = bill.payment_method
+                        }
+                      } catch {
+                        paymentMethodStr = bill.payment_method
+                      }
+                    }
+
+                    return {
+                      'Bill No': bill.bill_no || '',
+                      'Date': formatDate(bill.bill_date || bill.created_at),
+                      'Customer': customer?.name || 'N/A',
+                      'Type': bill.sale_type === 'gst' ? 'GST' : 'Non-GST',
+                      'Subtotal': bill.subtotal || 0,
+                      'GST': bill.gst_amount || 0,
+                      'Discount': bill.discount || 0,
+                      'Grand Total': bill.grand_total || 0,
+                      'Status': bill.bill_status || 'draft',
+                      'Staff': staff?.username || 'N/A',
+                    }
+                  })
+
+                  // Create workbook and worksheet
+                  const ws = XLSX.utils.json_to_sheet(excelData)
+                  const wb = XLSX.utils.book_new()
+                  XLSX.utils.book_append_sheet(wb, ws, 'Monthly Sales')
+
+                  // Generate filename
+                  const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleString('default', { month: 'long' })
+                  const filename = `Sales_Report_${monthName}_${year}.xlsx`
+
+                  // Download file
+                  XLSX.writeFile(wb, filename)
+
+                  toast({
+                    title: 'Success',
+                    description: `Excel report exported successfully: ${filename}`,
+                  })
+                } catch (error: any) {
+                  console.error('Error exporting report:', error)
+                  toast({
+                    title: 'Error',
+                    description: error.message || 'Failed to export report',
+                    variant: 'destructive',
+                  })
+                }
+              }}
+              className="h-9 text-sm px-4"
+            >
+              📥 Export to Excel
+            </Button>
           </div>
         </Card>
 

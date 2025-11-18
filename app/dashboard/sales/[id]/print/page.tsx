@@ -143,7 +143,21 @@ export default function PrintBillPage() {
   }
 
   // Calculate values for invoice
-  const mcValueAdded = { total: 0 } // MC items are in bill_items
+  // Separate MC/Value Added from regular items
+  const mcItem = billItems.find((item: any) => 
+    item.item_name && item.item_name.trim().toUpperCase() === 'MC / VALUE ADDED'
+  )
+  
+  const regularItems = billItems.filter((item: any) => 
+    !item.item_name || item.item_name.trim().toUpperCase() !== 'MC / VALUE ADDED'
+  )
+  
+  const mcValueAdded = mcItem ? {
+    weight: mcItem.weight || 0,
+    rate: mcItem.rate || 0,
+    total: mcItem.line_total || 0,
+  } : { weight: 0, rate: 0, total: 0 }
+  
   const subtotal = billData.subtotal || 0
   const billLevelGST = billData.gst_amount || 0
   const discount = billData.discount || 0
@@ -161,7 +175,7 @@ export default function PrintBillPage() {
           customer={billData.customers as Customer | null}
           billDate={billData.bill_date || billData.created_at}
           dailyGoldRate={dailyGoldRate || 0}
-          items={billItems.map((item: any) => ({
+          items={regularItems.map((item: any) => ({
             id: item.id.toString(),
             barcode: item.barcode || '',
             item_name: item.item_name || '',
@@ -194,10 +208,15 @@ export default function PrintBillPage() {
           cgst={cgst}
           sgst={sgst}
           igst={igst}
-          gstInputType="amount"
-          paymentMethod={billData.payment_method || ''}
-          paymentReference={billData.payment_reference || ''}
-          remarks={billData.remarks || ''}
+          paymentMethods={(() => {
+            if (!billData.payment_method) return undefined
+            try {
+              const parsed = JSON.parse(billData.payment_method)
+              return Array.isArray(parsed) ? parsed : undefined
+            } catch {
+              return undefined
+            }
+          })()}
         />
       )}
 

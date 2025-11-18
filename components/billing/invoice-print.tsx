@@ -39,10 +39,12 @@ interface InvoicePrintProps {
   cgst: number
   sgst: number
   igst: number
-  gstInputType: 'amount' | 'percentage'
-  paymentMethod?: string
-  paymentReference?: string
-  remarks?: string
+  paymentMethods?: Array<{
+    id: string
+    type: 'cash' | 'card' | 'upi' | 'cheque' | 'bank_transfer' | 'other'
+    amount: string
+    reference: string
+  }>
 }
 
 export function InvoicePrint({
@@ -62,10 +64,7 @@ export function InvoicePrint({
   cgst,
   sgst,
   igst,
-  gstInputType,
-  paymentMethod,
-  paymentReference,
-  remarks,
+  paymentMethods,
 }: InvoicePrintProps) {
   // Format date from YYYY-MM-DD to DD-MM-YYYY
   const formatDate = (dateStr: string) => {
@@ -75,28 +74,6 @@ export function InvoicePrint({
     const month = String(date.getMonth() + 1).padStart(2, '0')
     const year = date.getFullYear()
     return `${day}-${month}-${year}`
-  }
-
-  // Calculate GST amounts if percentage-based
-  const getCgstAmount = () => {
-    if (gstInputType === 'percentage') {
-      return subtotal * (cgst / 100)
-    }
-    return cgst
-  }
-
-  const getSgstAmount = () => {
-    if (gstInputType === 'percentage') {
-      return subtotal * (sgst / 100)
-    }
-    return sgst
-  }
-
-  const getIgstAmount = () => {
-    if (gstInputType === 'percentage') {
-      return subtotal * (igst / 100)
-    }
-    return igst
   }
 
   return (
@@ -177,29 +154,29 @@ export function InvoicePrint({
           font-family: 'Cinzel Decorative', serif;
           color: #d65a5a;
           text-align: center;
-          font-size: 36px;
+          font-size: 48px;
           letter-spacing: 2px;
-          margin-top: 0;
-          margin-bottom: 4px;
+          margin: 0;
+          line-height: 1.2;
         }
 
         .invoice-logo small {
           display: block;
-          font-size: 14px;
-          margin-top: 4px;
+          font-size: 18px;
+          margin-top: 6px;
           color: #d65a5a;
           font-weight: 700;
         }
 
         .invoice-meta {
-          margin-top: 12px;
-          margin-bottom: 20px;
+          margin-top: 0;
+          margin-bottom: 0;
           text-align: center;
         }
 
         .invoice-meta p {
           margin: 2px 0;
-          font-size: 12px;
+          font-size: 16px;
           color: #222;
           font-weight: 500;
           line-height: 1.3;
@@ -213,14 +190,14 @@ export function InvoicePrint({
         .invoice-meta .contacts {
           color: #d65a5a;
           font-weight: 700;
-          font-size: 14px;
+          font-size: 18px;
         }
 
         .invoice-info {
           display: flex;
           justify-content: center;
-          margin: 14px 0;
-          gap: 40px;
+          margin: 18px 0;
+          gap: 50px;
         }
 
         .invoice-info .block {
@@ -228,14 +205,14 @@ export function InvoicePrint({
         }
 
         .invoice-info .label {
-          font-size: 11px;
+          font-size: 14px;
           color: #6b6b6b;
           letter-spacing: 0.5px;
           line-height: 1.2;
         }
 
         .invoice-info .value {
-          font-size: 14px;
+          font-size: 18px;
           color: #222;
           font-weight: 700;
           margin-top: 4px;
@@ -243,38 +220,45 @@ export function InvoicePrint({
         }
 
         .invoice-items {
-          margin-top: 18px;
-          margin-bottom: 12px;
+          margin-top: 24px;
+          margin-bottom: 20px;
         }
 
         .invoice-items table {
           width: 100%;
           border-collapse: collapse;
-          font-size: 13px;
+          font-size: 16px;
           page-break-inside: avoid;
+          border: 1px solid #ddd;
         }
 
         .invoice-items th,
         .invoice-items td {
-          padding: 8px 6px;
+          padding: 14px 12px;
+          line-height: 1.6;
+          border: 1px solid #ddd;
+        }
+
+        .invoice-items th {
+          font-size: 15px;
+          background: #f5f5f5;
+          color: #222;
+          border-bottom: 2px solid #ddd;
           text-align: center;
-          line-height: 1.4;
+          font-weight: 700;
         }
 
         .invoice-items tr {
           page-break-inside: avoid;
         }
 
-        .invoice-items th {
-          font-size: 12px;
-          background: transparent;
-          color: #222;
-          border-bottom: 1px solid #eee;
+        .invoice-items td {
+          text-align: center;
         }
 
         .invoice-items td.item {
           text-align: left;
-          padding-left: 8px;
+          padding-left: 12px;
         }
 
         .invoice-watermark {
@@ -293,57 +277,59 @@ export function InvoicePrint({
 
         .invoice-totals {
           display: flex;
-          justify-content: flex-end;
-          margin-top: 20px;
-          margin-bottom: 12px;
+          justify-content: center;
+          margin-top: 30px;
+          margin-bottom: 20px;
           z-index: 1;
         }
 
         .invoice-totals .right {
-          min-width: 200px;
+          text-align: center;
+          width: 100%;
         }
 
         .invoice-totals .label {
-          font-size: 12px;
+          font-size: 16px;
           color: #6b6b6b;
-          text-align: left;
+          text-align: center;
           line-height: 1.2;
         }
 
         .invoice-totals .amount {
-          font-size: 22px;
+          font-size: 32px;
           color: #c0392b;
           font-weight: 800;
-          text-align: right;
+          text-align: center;
           line-height: 1.2;
         }
 
         .invoice-footer {
-          margin-top: 24px;
+          margin-top: 32px;
           display: flex;
-          gap: 12px;
-          align-items: flex-start;
+          flex-direction: column;
+          align-items: center;
+          gap: 16px;
           z-index: 1;
         }
 
         .invoice-footer .left {
-          flex: 1;
+          text-align: center;
         }
 
         .invoice-footer p {
           margin: 3px 0;
-          font-size: 11px;
+          font-size: 14px;
           color: #6b6b6b;
           line-height: 1.3;
         }
 
         .invoice-signature {
-          text-align: right;
+          text-align: center;
           font-weight: 700;
         }
 
         .invoice-small-header {
-          font-size: 11px;
+          font-size: 14px;
           font-weight: 700;
           text-decoration: underline;
           margin-bottom: 2px;
@@ -367,17 +353,19 @@ export function InvoicePrint({
 
       <div className="invoice-print-wrapper">
         <div className="invoice-paper">
-          <div className="invoice-logo">
-            PRAGYA JEWELS
-            <small>(916 KDM)</small>
-          </div>
-
-          <div className="invoice-meta">
-            <p className="address">NO: 61/2, VIVYANI ROAD, FRAZER TOWN,</p>
-            <p className="address" style={{ fontWeight: 700, letterSpacing: '1px' }}>
-              BANGALORE - 560005
-            </p>
-            <p className="contacts">PH: 080-25807958,&nbsp;&nbsp;&nbsp; MOB: 9845351614</p>
+          <div style={{ textAlign: 'center', marginBottom: '24px', paddingTop: '20px' }}>
+            <div className="invoice-logo">
+              PRAGYA JEWELS
+              <small>(916 KDM)</small>
+            </div>
+            
+            <div className="invoice-meta" style={{ marginTop: '16px' }}>
+              <p className="address">NO: 61/2, VIVYANI ROAD, FRAZER TOWN,</p>
+              <p className="address" style={{ fontWeight: 700, letterSpacing: '1px' }}>
+                BANGALORE - 560005
+              </p>
+              <p className="contacts">PH: 080-25807958,&nbsp;&nbsp;&nbsp; MOB: 9845351614</p>
+            </div>
           </div>
 
           <div className="invoice-info">
@@ -426,98 +414,104 @@ export function InvoicePrint({
                 {items.map((item, index) => (
                   <tr key={item.id || index}>
                     <td className="item">{item.item_name || 'Item'}</td>
-                    <td>{item.weight.toFixed(2)}</td>
-                    <td>{item.rate.toFixed(2)}</td>
-                    <td>{item.line_total.toFixed(2)}</td>
+                    <td>{item.weight.toFixed(2)}g</td>
+                    <td>₹{item.rate.toFixed(2)}</td>
+                    <td style={{ fontWeight: 600 }}>₹{item.line_total.toFixed(2)}</td>
                   </tr>
                 ))}
                 {mcValueAdded.total > 0 && (
-                  <tr>
+                  <tr style={{ borderTop: '2px solid #ddd' }}>
                     <td className="item" style={{ fontWeight: 700, textDecoration: 'underline' }}>
                       MC / VALUE ADDED
                     </td>
-                    <td>{mcValueAdded.weight.toFixed(2)}</td>
-                    <td>{mcValueAdded.rate.toFixed(2)}</td>
-                    <td>{mcValueAdded.total.toFixed(2)}</td>
+                    <td colSpan={2} style={{ textAlign: 'center' }}>-</td>
+                    <td style={{ fontWeight: 700 }}>₹{mcValueAdded.total.toFixed(2)}</td>
                   </tr>
                 )}
                 {saleType === 'gst' && billLevelGST > 0 && (
                   <>
                     {cgst > 0 && (
                       <tr>
-                        <td className="item" colSpan={3} style={{ textAlign: 'right', paddingRight: '12px' }}>
-                          CGST {gstInputType === 'percentage' ? `(${cgst}%)` : ''}
+                        <td className="item" colSpan={3} style={{ textAlign: 'center', paddingRight: '12px' }}>
+                          CGST (1.5%)
                         </td>
-                        <td>{getCgstAmount().toFixed(2)}</td>
+                        <td style={{ fontWeight: 600 }}>₹{cgst.toFixed(2)}</td>
                       </tr>
                     )}
                     {sgst > 0 && (
                       <tr>
-                        <td className="item" colSpan={3} style={{ textAlign: 'right', paddingRight: '12px' }}>
-                          SGST {gstInputType === 'percentage' ? `(${sgst}%)` : ''}
+                        <td className="item" colSpan={3} style={{ textAlign: 'center', paddingRight: '12px' }}>
+                          SGST (1.5%)
                         </td>
-                        <td>{getSgstAmount().toFixed(2)}</td>
+                        <td style={{ fontWeight: 600 }}>₹{sgst.toFixed(2)}</td>
                       </tr>
                     )}
                     {igst > 0 && (
                       <tr>
-                        <td className="item" colSpan={3} style={{ textAlign: 'right', paddingRight: '12px' }}>
-                          IGST {gstInputType === 'percentage' ? `(${igst}%)` : ''}
+                        <td className="item" colSpan={3} style={{ textAlign: 'center', paddingRight: '12px' }}>
+                          IGST
                         </td>
-                        <td>{getIgstAmount().toFixed(2)}</td>
+                        <td style={{ fontWeight: 600 }}>₹{igst.toFixed(2)}</td>
                       </tr>
                     )}
                   </>
                 )}
                 {discount > 0 && (
                   <tr>
-                    <td className="item" colSpan={3} style={{ textAlign: 'right', paddingRight: '12px' }}>
+                    <td className="item" colSpan={3} style={{ textAlign: 'center', paddingRight: '12px' }}>
                       DISCOUNT
                     </td>
-                    <td style={{ color: '#c0392b' }}>-{discount.toFixed(2)}</td>
+                    <td style={{ color: '#c0392b', fontWeight: 600 }}>-₹{discount.toFixed(2)}</td>
                   </tr>
                 )}
                 {oldGoldExchange.total > 0 && (
                   <tr>
-                    <td className="item" colSpan={3} style={{ textAlign: 'right', paddingRight: '12px' }}>
+                    <td className="item" colSpan={3} style={{ textAlign: 'center', paddingRight: '12px' }}>
                       OLD GOLD CREDIT
                     </td>
-                    <td style={{ color: '#c0392b' }}>-{oldGoldExchange.total.toFixed(2)}</td>
+                    <td style={{ color: '#c0392b', fontWeight: 600 }}>-₹{oldGoldExchange.total.toFixed(2)}</td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
 
-          <div className="invoice-watermark">PJ</div>
-
           <div className="invoice-totals">
             <div className="right">
-              <div className="label">TOTAL</div>
-              <div className="amount">{amountPayable.toFixed(2)}</div>
+              <div className="label" style={{ fontSize: '18px', marginBottom: '10px' }}>TOTAL</div>
+              <div className="amount">₹{amountPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </div>
           </div>
 
-          {paymentMethod && (
+          <div className="invoice-watermark">PJ</div>
+
+          {paymentMethods && paymentMethods.length > 0 && (
             <div className="invoice-info" style={{ marginTop: '16px', marginBottom: '10px' }}>
               <div className="block">
-                <div className="label">PAYMENT METHOD:-</div>
-                <div className="value">{paymentMethod}</div>
-              </div>
-              {paymentReference && (
-                <div className="block">
-                  <div className="label">REFERENCE:-</div>
-                  <div className="value">{paymentReference}</div>
+                <div className="label">PAYMENT DETAILS:-</div>
+                {paymentMethods.map((payment, index) => {
+                  const amount = parseFloat(payment.amount) || 0
+                  const typeLabel = payment.type === 'cash' ? 'Cash' :
+                    payment.type === 'card' ? 'Card' :
+                    payment.type === 'upi' ? 'UPI' :
+                    payment.type === 'cheque' ? 'Cheque' :
+                    payment.type === 'bank_transfer' ? 'Bank Transfer' : 'Other'
+                  return (
+                    <div key={payment.id || index} style={{ marginTop: index > 0 ? '8px' : '4px' }}>
+                      <div className="value">
+                        {typeLabel}: ₹{amount.toFixed(2)}
+                        {payment.reference && ` (Ref: ${payment.reference})`}
+                      </div>
+                    </div>
+                  )
+                })}
+                <div className="value" style={{ marginTop: '8px', fontWeight: 'bold' }}>
+                  Total: ₹{paymentMethods.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0).toFixed(2)}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
-          {remarks && (
-            <div style={{ marginTop: '12px', marginBottom: '10px', fontSize: '11px', color: '#6b6b6b', lineHeight: '1.3' }}>
-              <strong>Remarks:</strong> {remarks}
-            </div>
-          )}
 
           <div className="invoice-footer">
             <div className="left">

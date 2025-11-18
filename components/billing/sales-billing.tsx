@@ -9,6 +9,7 @@ import type { Customer } from '@/lib/db/queries'
 import { createBill, createBillItems } from '@/lib/db/queries'
 import { toast } from '@/components/ui/use-toast'
 import { InvoicePrint } from './invoice-print'
+import { PurchaseBillPrint } from './purchase-bill-print'
 
 interface BillItem {
   id: string
@@ -49,18 +50,29 @@ export function SalesBilling() {
   const [isLoadingItem, setIsLoadingItem] = useState(false)
   const [dailyGoldRate, setDailyGoldRate] = useState(0) // Daily gold rate per gram
   const [dailyGoldRateInput, setDailyGoldRateInput] = useState('') // Raw string input for daily gold rate
-  const [paymentMethod, setPaymentMethod] = useState('')
-  const [paymentReference, setPaymentReference] = useState('')
+  
+  // Multiple payment methods
+  type PaymentMethodType = 'cash' | 'card' | 'upi' | 'cheque' | 'bank_transfer' | 'other'
+  interface PaymentMethod {
+    id: string
+    type: PaymentMethodType
+    amount: string
+    reference: string
+  }
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
+  
   const [discount, setDiscount] = useState(0)
   const [discountInput, setDiscountInput] = useState('') // Raw string input for discount
   const [saleType, setSaleType] = useState<'gst' | 'non_gst'>('gst')
-  const [gstInputType, setGstInputType] = useState<'amount' | 'percentage'>('percentage') // For bill-level GST
-  const [cgst, setCgst] = useState(0) // Separate CGST input (amount or percentage based on gstInputType)
-  const [cgstInput, setCgstInput] = useState('') // Raw string input for CGST
-  const [sgst, setSgst] = useState(0) // Separate SGST input (amount or percentage based on gstInputType)
-  const [sgstInput, setSgstInput] = useState('') // Raw string input for SGST
-  const [igst, setIgst] = useState(0) // IGST input (amount or percentage based on gstInputType)
-  const [igstInput, setIgstInput] = useState('') // Raw string input for IGST
+  
+  // GST is fixed at 3% (1.5% CGST + 1.5% SGST)
+  const GST_RATE = 0.03
+  const [cgst, setCgst] = useState(0) // Calculated CGST amount
+  const [sgst, setSgst] = useState(0) // Calculated SGST amount
+  const [igst, setIgst] = useState(0) // IGST (not used, kept for compatibility)
+  
+  // Editable amount payable
+  const [amountPayableInput, setAmountPayableInput] = useState<string | null>(null)
   const [mcValueAdded, setMcValueAdded] = useState({
     weight: 0,
     weightInput: '', // Raw string input
@@ -79,15 +91,15 @@ export function SalesBilling() {
     particulars: '', // Description/particulars
   })
   const [purchaseBillId, setPurchaseBillId] = useState<string>('') // Store purchase bill ID when created
-  const [remarks, setRemarks] = useState('')
   const [billDate, setBillDate] = useState(new Date().toISOString().split('T')[0])
-  const [billStatus, setBillStatus] = useState<'draft' | 'finalized' | 'cancelled'>('draft')
   const [billNo, setBillNo] = useState('')
   const [nongstAuthId, setNongstAuthId] = useState('')
   const [staffId, setStaffId] = useState('')
   const [userRole, setUserRole] = useState<'admin' | 'staff'>('staff')
   const [canAuthorizeNonGst, setCanAuthorizeNonGst] = useState(false)
+  const [username, setUsername] = useState<string>('')
   const [showInvoice, setShowInvoice] = useState(false)
+  const [showPurchaseBill, setShowPurchaseBill] = useState(false)
 
   // Get user info from session and fetch daily gold rate
   useEffect(() => {
@@ -96,6 +108,7 @@ export function SalesBilling() {
       const userData = JSON.parse(storedUser)
       setStaffId(userData.id || 'staff-001')
       setUserRole(userData.role || 'staff')
+      setUsername(userData.username || '')
       setCanAuthorizeNonGst(userData.can_authorize_nongst || false)
       
       // Staff can ONLY use GST, never Non-GST - enforce this
@@ -297,11 +310,13 @@ export function SalesBilling() {
       if (error) {
         if (error.code === 'PGRST116') {
           console.log('Item not found for barcode:', barcodeValue)
+          // Allow user to add item manually even if not in inventory
           toast({
             title: 'Item Not Found',
-            description: `Item not found for barcode: "${barcodeValue}". Please enter details manually or check if the item exists in inventory.`,
-            variant: 'destructive',
+            description: `Item not found in inventory. You can enter details manually.`,
           })
+          setIsLoadingItem(false)
+          return
         } else if (error.message?.includes('406') || error.code === 'PGRST301') {
           console.error('406 Not Acceptable Error:', error)
           console.error('Full error:', JSON.stringify(error, null, 2))
@@ -423,7 +438,27 @@ export function SalesBilling() {
   }
 
   const handleAddItem = () => {
-    if (newItem.item_name && newItem.weight) {
+    // Allow adding items even if not in inventory - just need item name and weight
+    const weight = parseFloat(newItem.weightInput) || 0
+    
+    if (!newItem.item_name || !newItem.item_name.trim()) {
+      toast({
+        title: 'Item Name Required',
+        description: 'Please enter an item name',
+        variant: 'destructive',
+      })
+      return
+    }
+    
+    if (!weight || weight <= 0) {
+      toast({
+        title: 'Weight Required',
+        description: 'Please enter a valid weight',
+        variant: 'destructive',
+      })
+      return
+    }
+    
       // Use daily gold rate for calculation
       const goldRate = dailyGoldRate || newItem.rate || 0
       if (!goldRate) {
@@ -434,7 +469,7 @@ export function SalesBilling() {
         })
         return
       }
-      const weight = parseFloat(newItem.weightInput) || 0
+    
       const makingCharges = parseFloat(newItem.makingChargesInput) || 0
       const lineTotal = calculateLineTotal(weight, goldRate, makingCharges)
       setItems([
@@ -442,7 +477,7 @@ export function SalesBilling() {
         {
           id: Date.now().toString(),
           barcode: newItem.barcode || '',
-          item_name: newItem.item_name,
+        item_name: newItem.item_name.trim(),
           weight: weight,
           rate: goldRate, // Store the gold rate used
           making_charges: makingCharges,
@@ -451,11 +486,56 @@ export function SalesBilling() {
         },
       ])
       setNewItem({ barcode: '', item_name: '', weight: 0, weightInput: '', rate: 0, making_charges: 0, makingChargesInput: '' })
-    }
+    toast({
+      title: 'Item Added',
+      description: 'Item has been added to the bill',
+    })
   }
 
   const handleRemoveItem = (id: string) => {
     setItems(items.filter(item => item.id !== id))
+  }
+
+  // Rounding function for GST (whole numbers)
+  // Rules: .5 and above rounds up, below .5 rounds down
+  // Example: 393.5 → 394, 393.2 → 393
+  const roundGstAmount = (value: number) => {
+    if (!isFinite(value) || value <= 0) {
+      return 0
+    }
+    // Get decimal part
+    const decimal = value % 1
+    // If .5 or above, round up (ceil), otherwise round down (floor)
+    if (decimal >= 0.5) {
+      return Math.ceil(value)
+    } else {
+      return Math.floor(value)
+    }
+  }
+
+  // Rounding function for currency (2 decimal places)
+  // Rules: .5 and above rounds up, below .5 rounds down
+  // Example: 2106.795 → 2106.80, 2106.794 → 2106.79
+  const roundCurrency = (value: number) => {
+    if (!isFinite(value) || value < 0) {
+      return 0
+    }
+    // Multiply by 100, round with .5 rule, then divide by 100
+    const multiplied = value * 100
+    const decimal = multiplied % 1
+    const rounded = decimal >= 0.5 ? Math.ceil(multiplied) : Math.floor(multiplied)
+    return rounded / 100
+  }
+
+  // Rounding function for whole numbers (MC/Value Added)
+  // Rules: .5 and above rounds up, below .5 rounds down
+  // Example: 2106.5 → 2107, 2106.4 → 2106
+  const roundToWhole = (value: number) => {
+    if (!isFinite(value) || value < 0) {
+      return 0
+    }
+    const decimal = value % 1
+    return decimal >= 0.5 ? Math.ceil(value) : Math.floor(value)
   }
 
   // Calculate MC/Value Added total
@@ -463,16 +543,29 @@ export function SalesBilling() {
     const weight = parseFloat(mcValueAdded.weightInput) || 0
     const rate = parseFloat(mcValueAdded.rateInput) || 0
     const mcTotal = weight * rate
-    setMcValueAdded(prev => ({ ...prev, weight, rate, total: mcTotal }))
+    setMcValueAdded(prev => ({ ...prev, weight, rate, total: roundToWhole(mcTotal) })) // Round to whole number
   }, [mcValueAdded.weightInput, mcValueAdded.rateInput])
 
   // Calculate Old Gold Exchange total
   useEffect(() => {
     const weight = parseFloat(oldGoldExchange.weightInput) || 0
-    const rate = parseFloat(oldGoldExchange.rateInput) || 0
+    // Use rateInput if provided, otherwise use dailyGoldRate as fallback
+    const rate = parseFloat(oldGoldExchange.rateInput) || (dailyGoldRate > 0 ? dailyGoldRate : 0)
     const oldGoldTotal = weight * rate
-    setOldGoldExchange(prev => ({ ...prev, weight, rate, total: oldGoldTotal }))
-  }, [oldGoldExchange.weightInput, oldGoldExchange.rateInput])
+    
+    // Auto-fill rateInput with dailyGoldRate if weight is entered and rateInput is empty
+    if (weight > 0 && !oldGoldExchange.rateInput && dailyGoldRate > 0) {
+      setOldGoldExchange(prev => ({ 
+        ...prev, 
+        weight, 
+        rate, 
+        rateInput: dailyGoldRate.toString(),
+        total: roundCurrency(oldGoldTotal) 
+      }))
+    } else {
+      setOldGoldExchange(prev => ({ ...prev, weight, rate, total: roundCurrency(oldGoldTotal) }))
+    }
+  }, [oldGoldExchange.weightInput, oldGoldExchange.rateInput, dailyGoldRate])
 
   // Safety check: Staff can NEVER use Non-GST, force it to GST
   useEffect(() => {
@@ -485,20 +578,100 @@ export function SalesBilling() {
   // Calculate totals
   // Subtotal = sum of line_totals (base amounts without GST, GST applied at bill level)
   const subtotal = items.reduce((sum, item) => sum + item.line_total, 0)
-  // Bill-level GST from CGST/SGST/IGST inputs
-  let billLevelGST = 0
-  if (saleType === 'gst') {
-    if (gstInputType === 'percentage') {
-      // Calculate GST as percentage of subtotal
-      billLevelGST = (subtotal * (cgst / 100)) + (subtotal * (sgst / 100)) + (subtotal * (igst / 100))
-    } else {
-      // GST is entered as direct amounts
-      billLevelGST = cgst + sgst + igst
+  const baseTaxableWithoutMc = subtotal - oldGoldExchange.total
+  
+  // Calculate MC/Value Added adjustment based on editable amount payable
+  useEffect(() => {
+    if (amountPayableInput === null || amountPayableInput === '') {
+      return
     }
-  }
-  // Grand Total = Subtotal + Bill-level GST (CGST/SGST/IGST) + MC/Value Added - Discount - Old Gold Credit
-  const grandTotal = subtotal + billLevelGST + mcValueAdded.total - discount - oldGoldExchange.total
-  const amountPayable = grandTotal // Amount customer needs to pay after old gold credit
+    const targetAmount = parseFloat(amountPayableInput)
+    if (isNaN(targetAmount) || targetAmount <= 0) {
+      return
+    }
+
+    const timer = setTimeout(() => {
+      // For GST bills: Amount Payable = (Subtotal + MC) * 1.03
+      // So: MC = (Amount Payable / 1.03) - Subtotal
+      // For non-GST: MC = Amount Payable - Subtotal
+      const targetTaxable = saleType === 'gst'
+        ? targetAmount / (1 + GST_RATE)
+        : targetAmount
+      const requiredMcTotal = targetTaxable - baseTaxableWithoutMc
+      
+      // Ensure MC is not negative
+      if (requiredMcTotal < 0) {
+        console.warn('MC calculation resulted in negative value, setting to 0')
+        setMcValueAdded(prev => ({
+          ...prev,
+          total: 0,
+        }))
+        return
+      }
+      
+      const currentWeight = parseFloat(mcValueAdded.weightInput) || 0
+      const currentRate = parseFloat(mcValueAdded.rateInput) || 0
+      
+      if (currentWeight > 0) {
+        const newRate = requiredMcTotal / currentWeight
+        if (!isNaN(newRate) && isFinite(newRate)) {
+          const roundedTotal = roundToWhole(requiredMcTotal)
+          setMcValueAdded(prev => ({
+            ...prev,
+            rate: newRate,
+            rateInput: newRate.toFixed(2),
+            total: roundedTotal,
+          }))
+        }
+      } else if (currentRate > 0) {
+        const newWeight = requiredMcTotal / currentRate
+        if (!isNaN(newWeight) && isFinite(newWeight)) {
+          const roundedTotal = roundToWhole(requiredMcTotal)
+          setMcValueAdded(prev => ({
+            ...prev,
+            weight: newWeight,
+            weightInput: newWeight.toFixed(3),
+            total: roundedTotal,
+          }))
+        }
+      } else {
+        setMcValueAdded(prev => ({
+          ...prev,
+          total: roundToWhole(requiredMcTotal), // Round to whole number
+        }))
+      }
+    }, 1000) // 1 second debounce
+
+    return () => clearTimeout(timer)
+  }, [amountPayableInput, saleType, baseTaxableWithoutMc, mcValueAdded.weightInput, mcValueAdded.rateInput])
+
+  // Final totals
+  const preGstTotal = baseTaxableWithoutMc + mcValueAdded.total
+  const calculatedGrandTotal = saleType === 'gst'
+    ? preGstTotal * (1 + GST_RATE)
+    : preGstTotal
+  
+  // GST calculation: 3% of final payable amount
+  const finalAmount = amountPayableInput !== null && amountPayableInput !== ''
+    ? parseFloat(amountPayableInput)
+    : calculatedGrandTotal
+  
+  const gstRaw = saleType === 'gst' 
+    ? finalAmount - (finalAmount / (1 + GST_RATE))
+    : 0
+  const billLevelGST = roundGstAmount(gstRaw)
+  const cgstAmount = saleType === 'gst' ? roundGstAmount(billLevelGST / 2) : 0
+  const sgstAmount = saleType === 'gst' ? roundGstAmount(billLevelGST / 2) : 0
+  const igstAmount = 0
+
+  const amountPayable = finalAmount
+  const grandTotal = calculatedGrandTotal
+
+  useEffect(() => {
+    setCgst(cgstAmount)
+    setSgst(sgstAmount)
+    setIgst(igstAmount)
+  }, [cgstAmount, sgstAmount, igstAmount])
 
   // Function to generate bill number
   const generateBillNumber = async () => {
@@ -570,15 +743,14 @@ export function SalesBilling() {
         sale_type: saleType,
         subtotal: subtotal,
         gst_amount: billLevelGST,
-        cgst: saleType === 'gst' ? (gstInputType === 'percentage' ? subtotal * (cgst / 100) : cgst) : undefined,
-        sgst: saleType === 'gst' ? (gstInputType === 'percentage' ? subtotal * (sgst / 100) : sgst) : undefined,
-        igst: saleType === 'gst' ? (gstInputType === 'percentage' ? subtotal * (igst / 100) : igst) : undefined,
+        cgst: saleType === 'gst' ? cgstAmount : undefined,
+        sgst: saleType === 'gst' ? sgstAmount : undefined,
+        igst: saleType === 'gst' ? igstAmount : undefined,
         discount: discount || undefined,
         grand_total: grandTotal,
-        payment_method: paymentMethod || undefined,
-        payment_reference: paymentReference || undefined,
+        payment_method: paymentMethods.length > 0 ? JSON.stringify(paymentMethods) : undefined,
+        payment_reference: undefined, // No longer used, data in payment_method JSON
         bill_status: 'finalized' as const,
-        remarks: remarks || undefined,
       }
 
       // Create bill
@@ -681,17 +853,155 @@ export function SalesBilling() {
       <div className="p-6 max-w-7xl mx-auto">
         {/* Professional Header */}
         <div className="mb-8 bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
-          <div className="flex items-center justify-between gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Customer Information Card - In Header */}
+            <Card className="border-2 border-slate-200 dark:border-slate-700 shadow-lg lg:col-span-2">
+              <div className="p-4">
+                <h3 className="text-sm font-semibold text-foreground mb-3">Customer Information</h3>
+                {!customer && (
+                  <div className="space-y-4 customer-search-container">
+                    {/* Search Input */}
+                    <div className="relative">
+                      <Input
+                        type="text"
+                        placeholder="Type phone number or name to search..."
+                        value={customerSearch}
+                        onChange={(e) => {
+                          setCustomerSearch(e.target.value)
+                          setShowCustomerDropdown(true)
+                        }}
+                        onFocus={() => customerSearch && setShowCustomerDropdown(true)}
+                        className="w-full h-10 text-sm pr-10"
+                      />
+                      {isSearching && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                      )}
+                      
+                      {/* Customer Dropdown */}
+                      {showCustomerDropdown && customerSearch && (
+                        <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-lg shadow-xl max-h-64 overflow-y-auto">
+                          {customerMatches.length > 0 ? (
+                            <>
+                              {customerMatches.map((match) => (
+                                <div
+                                  key={match.id}
+                                  onClick={() => handleSelectCustomer(match)}
+                                  className="p-3 hover:bg-primary/5 cursor-pointer border-b border-slate-100 dark:border-slate-700 last:border-0 transition-colors"
+                                >
+                                  <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Sales Bill</h1>
-              <p className="text-slate-600 dark:text-slate-400">Create and manage customer sales bills</p>
+                                      <p className="font-semibold text-sm text-foreground">{match.name || 'No Name'}</p>
+                                      <p className="text-xs text-muted-foreground">📞 {match.phone}</p>
             </div>
-            <div className="flex gap-4 items-center">
-              {/* Daily Gold Rate Display/Input (Admin Only) */}
-              {userRole === 'admin' && (
+                                    <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
+                                      {match.customer_code}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                              <div
+                                onClick={() => {
+                                  setShowAddCustomerForm(true)
+                                  setShowCustomerDropdown(false)
+                                }}
+                                className="p-3 bg-primary/5 hover:bg-primary/10 cursor-pointer border-t-2 border-primary/20 transition-colors"
+                              >
+                                <p className="font-medium text-xs text-primary text-center">
+                                  + Add New Customer
+                                </p>
+                              </div>
+                            </>
+                          ) : customerSearch && !isSearching ? (
+                            <div
+                              onClick={() => {
+                                setShowAddCustomerForm(true)
+                                setShowCustomerDropdown(false)
+                              }}
+                              className="p-4 text-center cursor-pointer hover:bg-primary/5 transition-colors"
+                            >
+                              <p className="text-xs text-muted-foreground mb-2">No customer found</p>
+                              <p className="text-xs text-primary font-medium">+ Add New Customer</p>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {customer && (
+                  <div className="p-3 bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg border-2 border-primary/20">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="text-sm font-bold text-foreground">{customer.name || 'No Name'}</p>
+                        <p className="text-xs text-muted-foreground mt-1">📞 {customer.phone}</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setCustomer(null)
+                          setCustomerSearch('')
+                        }}
+                        className="text-destructive border-destructive hover:bg-destructive/10 h-7 text-xs"
+                      >
+                        Change
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Add Customer Form */}
+                {showAddCustomerForm && (
+                  <div className="mt-3 p-3 bg-slate-50 dark:bg-slate-900 border-2 border-primary/20 rounded-lg">
+                    <h4 className="font-bold text-sm text-foreground mb-3">Add New Customer</h4>
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Full Name *"
+                        value={newCustomerData.name}
+                        onChange={(e) => setNewCustomerData({ ...newCustomerData, name: e.target.value })}
+                        className="bg-white dark:bg-slate-800 h-9 text-sm"
+                      />
+                      <Input
+                        placeholder="Phone Number *"
+                        value={newCustomerData.phone}
+                        onChange={(e) => setNewCustomerData({ ...newCustomerData, phone: e.target.value })}
+                        className="bg-white dark:bg-slate-800 h-9 text-sm"
+                      />
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          onClick={handleAddNewCustomer}
+                          size="sm"
+                          className="flex-1 bg-primary hover:bg-primary/90 text-white h-8 text-xs"
+                        >
+                          Add
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setShowAddCustomerForm(false)
+                            setNewCustomerData({ name: '', phone: '', email: '', address: '', notes: '' })
+                          }}
+                          className="h-8 text-xs"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Daily Gold Rate and Bill Number - In Header */}
+            <div className="flex flex-col gap-4">
+              {/* Daily Gold Rate */}
+              {userRole === 'admin' ? (
                 <Card className="p-4 border-2 border-primary/20">
                   <div>
-                    <label className="text-sm font-semibold text-foreground mb-1 block">Daily Gold Rate (₹/gram)</label>
+                    <label className="text-sm font-semibold text-foreground mb-2 block">Daily Gold Rate (₹/gram)</label>
                     <Input
                       type="text"
                       placeholder="Enter gold rate"
@@ -705,14 +1015,11 @@ export function SalesBilling() {
                           
                           setDailyGoldRate(rate)
                           
-                          // Only save to database if rate is valid and not empty
                           if (rate > 0 || val === '0') {
-                            // Create new gold rate entry for today
                             try {
                               const supabase = createClient()
                               const today = new Date().toISOString().split('T')[0]
                               
-                              // Check if rate already exists for today
                               const { data: existingRate } = await supabase
                                 .from('gold_rates')
                                 .select('*')
@@ -721,16 +1028,12 @@ export function SalesBilling() {
 
                               let error
                               if (existingRate) {
-                                // Update existing rate for today
                                 const { error: updateError } = await supabase
                                   .from('gold_rates')
-                                  .update({
-                                    rate_per_gram: rate,
-                                  })
+                                  .update({ rate_per_gram: rate })
                                   .eq('id', existingRate.id)
                                 error = updateError
                               } else {
-                                // Insert new rate for today
                                 const { error: insertError } = await supabase
                                   .from('gold_rates')
                                   .insert({
@@ -742,46 +1045,41 @@ export function SalesBilling() {
 
                               if (error) {
                                 console.error('Error saving gold rate:', error)
-                                toast({
-                                  title: 'Error',
-                                  description: 'Failed to save gold rate. Please try again.',
-                                  variant: 'destructive',
-                                })
                               } else if (rate > 0) {
                                 toast({
                                   title: 'Gold Rate Updated',
-                                  description: `Daily gold rate set to ₹${rate.toFixed(2)}/gram for ${today}`,
+                                  description: `Daily gold rate set to ₹${rate.toFixed(2)}/gram`,
                                 })
                               }
                             } catch (error) {
                               console.error('Error saving gold rate:', error)
-                              toast({
-                                title: 'Error',
-                                description: 'Failed to save gold rate. Please try again.',
-                                variant: 'destructive',
-                              })
                             }
                           }
                         }
                       }}
-                      className="h-10 w-40"
+                      className="h-10"
                     />
                   </div>
                 </Card>
-              )}
-              {userRole === 'staff' && dailyGoldRate > 0 && (
+              ) : (
+                dailyGoldRate > 0 && (
                 <Card className="p-4 border-2 border-primary/20">
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Daily Gold Rate</p>
                     <p className="text-2xl font-bold text-primary">₹{dailyGoldRate.toFixed(2)}/gram</p>
                   </div>
                 </Card>
+                )
               )}
+              
+              {/* Bill Number */}
               {billNo && (
-                <div className="text-right">
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Bill Number</p>
+                <Card className="p-4 border-2 border-primary/20">
+                  <div>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Bill Number</p>
                   <p className="text-xl font-bold text-primary">{billNo}</p>
                 </div>
+                </Card>
               )}
             </div>
           </div>
@@ -790,170 +1088,86 @@ export function SalesBilling() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-            {/* Customer Section - Professional Design */}
+            {/* Add Items Section */}
             <Card className="border-2 border-slate-200 dark:border-slate-700 shadow-lg">
               <div className="p-6">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                    <span className="text-primary text-xl">👤</span>
+                  <div className="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
+                    <span className="text-green-500 text-xl">📦</span>
                   </div>
-                  <h2 className="text-xl font-bold text-foreground">Customer Information</h2>
+                  <h2 className="text-xl font-bold text-foreground">Add Items</h2>
                 </div>
-
-            {!customer ? (
-                  <div className="space-y-4 customer-search-container">
-                    {/* Search Input */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                     <div className="relative">
                   <Input
-                        type="text"
-                        placeholder="Type phone number or name to search..."
-                    value={customerSearch}
-                        onChange={(e) => {
-                          setCustomerSearch(e.target.value)
-                          setShowCustomerDropdown(true)
-                        }}
-                        onFocus={() => customerSearch && setShowCustomerDropdown(true)}
-                        className="w-full h-12 text-lg pr-10"
-                      />
-                      {isSearching && (
+                      placeholder="Scan or enter barcode"
+                      value={newItem.barcode}
+                      onChange={(e) => setNewItem({ ...newItem, barcode: e.target.value })}
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter' && newItem.barcode.trim()) {
+                          e.preventDefault()
+                          await handleSearchBarcode()
+                        }
+                      }}
+                      className="h-11"
+                    />
+                    {isLoadingItem && (
                         <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                          <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
                 </div>
-                      )}
-                      
-                      {/* Customer Dropdown */}
-                      {showCustomerDropdown && customerSearch && (
-                        <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-lg shadow-xl max-h-64 overflow-y-auto">
-                          {customerMatches.length > 0 ? (
-                            <>
-                              {customerMatches.map((match) => (
-                                <div
-                                  key={match.id}
-                                  onClick={() => handleSelectCustomer(match)}
-                                  className="p-4 hover:bg-primary/5 cursor-pointer border-b border-slate-100 dark:border-slate-700 last:border-0 transition-colors"
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <p className="font-semibold text-foreground">{match.name || 'No Name'}</p>
-                                      <p className="text-sm text-muted-foreground">📞 {match.phone}</p>
-                                      {match.email && (
-                                        <p className="text-xs text-muted-foreground mt-1">✉️ {match.email}</p>
                                       )}
                                     </div>
-                                    <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
-                                      {match.customer_code}
-                                    </span>
-                                  </div>
-                        </div>
-                      ))}
-                              <div
-                                onClick={() => {
-                                  setShowAddCustomerForm(true)
-                                  setShowCustomerDropdown(false)
-                                }}
-                                className="p-4 bg-primary/5 hover:bg-primary/10 cursor-pointer border-t-2 border-primary/20 transition-colors"
-                              >
-                                <p className="font-medium text-primary text-center">
-                                  + Add New Customer
-                                </p>
-                </div>
-                            </>
-                          ) : customerSearch && !isSearching ? (
-                            <div
-                              onClick={() => {
-                                setShowAddCustomerForm(true)
-                                setShowCustomerDropdown(false)
-                              }}
-                              className="p-6 text-center cursor-pointer hover:bg-primary/5 transition-colors"
-                            >
-                              <p className="text-muted-foreground mb-2">No customer found</p>
-                              <p className="text-primary font-medium">+ Add New Customer</p>
-                            </div>
-                          ) : null}
+                          <Input
+                    placeholder="Item Name *"
+                    value={newItem.item_name}
+                    onChange={(e) => setNewItem({ ...newItem, item_name: e.target.value })}
+                    className="h-11"
+                          />
+                          <Input
+                    type="text"
+                    placeholder="Weight (grams) * (e.g., 0.5, 3.960)"
+                    value={newItem.weightInput}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      if (val === '' || /^-?\d*\.?\d*$/.test(val)) {
+                        setNewItem({ ...newItem, weightInput: val })
+                      }
+                    }}
+                    className="h-11"
+                  />
+                  <div className="relative">
+                          <Input
+                      type="text"
+                      placeholder="Gold Rate (auto from daily rate)"
+                      value={dailyGoldRate || ''}
+                      disabled
+                      className="h-11 bg-muted"
+                    />
+                    {!dailyGoldRate && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-destructive">
+                        Not Set
+                      </span>
+                    )}
                   </div>
-                      )}
-                    </div>
-
-                    {/* Add Customer Form */}
-                    {showAddCustomerForm && (
-                      <Card className="p-6 bg-slate-50 dark:bg-slate-900 border-2 border-primary/20">
-                        <h3 className="font-bold text-foreground mb-4">Add New Customer</h3>
-                        <div className="space-y-3">
                           <Input
-                            placeholder="Full Name *"
-                            value={newCustomerData.name}
-                            onChange={(e) => setNewCustomerData({ ...newCustomerData, name: e.target.value })}
-                            className="bg-white dark:bg-slate-800"
-                          />
-                          <Input
-                            placeholder="Phone Number *"
-                            value={newCustomerData.phone}
-                            onChange={(e) => setNewCustomerData({ ...newCustomerData, phone: e.target.value })}
-                            className="bg-white dark:bg-slate-800"
-                          />
-                          <Input
-                            placeholder="Email (optional)"
-                            type="email"
-                            value={newCustomerData.email}
-                            onChange={(e) => setNewCustomerData({ ...newCustomerData, email: e.target.value })}
-                            className="bg-white dark:bg-slate-800"
-                          />
-                          <Input
-                            placeholder="Address (optional)"
-                            value={newCustomerData.address}
-                            onChange={(e) => setNewCustomerData({ ...newCustomerData, address: e.target.value })}
-                            className="bg-white dark:bg-slate-800"
-                          />
-                          <div className="flex gap-2 pt-2">
-                            <Button
-                              onClick={handleAddNewCustomer}
-                              className="flex-1 bg-primary hover:bg-primary/90 text-white"
-                            >
-                              Add Customer
-                            </Button>
-                            <Button
-                              variant="outline"
-                              onClick={() => {
-                                setShowAddCustomerForm(false)
-                                setNewCustomerData({ name: '', phone: '', email: '', address: '', notes: '' })
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
-                      </Card>
-                )}
-              </div>
-            ) : (
-                  <div className="p-4 bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg border-2 border-primary/20">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <p className="text-xl font-bold text-foreground">{customer.name || 'No Name'}</p>
-                          <span className="text-xs bg-primary text-white px-2 py-1 rounded">
-                            {customer.customer_code}
-                          </span>
-                        </div>
-                        <div className="space-y-1 text-sm text-muted-foreground">
-                          {customer.phone && <p>📞 {customer.phone}</p>}
-                          {customer.email && <p>✉️ {customer.email}</p>}
-                          {customer.address && <p>📍 {customer.address}</p>}
-                        </div>
+                    type="text"
+                    placeholder="Making charges"
+                    value={newItem.makingChargesInput}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      if (val === '' || /^-?\d*\.?\d*$/.test(val)) {
+                        setNewItem({ ...newItem, makingChargesInput: val })
+                      }
+                    }}
+                    className="h-11"
+                  />
                 </div>
                 <Button
-                  variant="outline"
-                        onClick={() => {
-                          setCustomer(null)
-                          setCustomerSearch('')
-                        }}
-                        className="text-destructive border-destructive hover:bg-destructive/10"
-                >
-                  Change
+                  onClick={handleAddItem}
+                  className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-semibold text-lg"
+                            >
+                  + Add Item to Bill
                 </Button>
-                    </div>
-              </div>
-            )}
               </div>
           </Card>
 
@@ -1011,170 +1225,102 @@ export function SalesBilling() {
                     </div>
                   )}
                   {saleType === 'gst' && (
-                    <>
                       <div className="md:col-span-2">
-                        <label className="text-sm font-semibold text-foreground mb-2 block">GST Input Type</label>
-                        <div className="flex gap-4">
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="gstInputType"
-                              value="percentage"
-                              checked={gstInputType === 'percentage'}
-                              onChange={(e) => {
-                                setGstInputType('percentage')
-                                setCgst(0)
-                                setSgst(0)
-                                setIgst(0)
-                              }}
-                              className="w-4 h-4"
-                            />
-                            <span className="text-sm">Percentage (%)</span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="gstInputType"
-                              value="amount"
-                              checked={gstInputType === 'amount'}
-                              onChange={(e) => {
-                                setGstInputType('amount')
-                                setCgst(0)
-                                setSgst(0)
-                                setIgst(0)
-                              }}
-                              className="w-4 h-4"
-                            />
-                            <span className="text-sm">Amount (₹)</span>
-                          </label>
+                      <div className="p-3 bg-primary/5 rounded-lg border border-primary/20">
+                        <p className="text-sm text-muted-foreground">
+                          GST is fixed at 3% (1.5% CGST + 1.5% SGST)
+                        </p>
                         </div>
                       </div>
-                      <div>
-                        <label className="text-sm font-semibold text-foreground mb-2 block">
-                          CGST {gstInputType === 'percentage' ? '(%)' : '(₹)'}
-                        </label>
-                        <Input
-                          type="text"
-                          placeholder={gstInputType === 'percentage' ? 'Enter CGST %' : 'Enter CGST amount'}
-                          value={cgstInput}
-                          onChange={(e) => {
-                            const val = e.target.value
-                            if (val === '' || /^-?\d*\.?\d*$/.test(val)) {
-                              setCgstInput(val)
-                              const num = val === '' ? 0 : parseFloat(val)
-                              if (!isNaN(num)) {
-                                setCgst(num)
-                              } else {
-                                setCgst(0)
-                              }
-                            }
-                          }}
-                          className="h-11"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-semibold text-foreground mb-2 block">
-                          SGST {gstInputType === 'percentage' ? '(%)' : '(₹)'}
-                        </label>
-                        <Input
-                          type="text"
-                          placeholder={gstInputType === 'percentage' ? 'Enter SGST %' : 'Enter SGST amount'}
-                          value={sgstInput}
-                          onChange={(e) => {
-                            const val = e.target.value
-                            if (val === '' || /^-?\d*\.?\d*$/.test(val)) {
-                              setSgstInput(val)
-                              const num = val === '' ? 0 : parseFloat(val)
-                              if (!isNaN(num)) {
-                                setSgst(num)
-                              } else {
-                                setSgst(0)
-                              }
-                            }
-                          }}
-                          className="h-11"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-semibold text-foreground mb-2 block">
-                          IGST (if applicable) {gstInputType === 'percentage' ? '(%)' : '(₹)'}
-                        </label>
-                        <Input
-                          type="text"
-                          placeholder={gstInputType === 'percentage' ? 'Enter IGST %' : 'Enter IGST amount'}
-                          value={igstInput}
-                          onChange={(e) => {
-                            const val = e.target.value
-                            if (val === '' || /^-?\d*\.?\d*$/.test(val)) {
-                              setIgstInput(val)
-                              const num = val === '' ? 0 : parseFloat(val)
-                              if (!isNaN(num)) {
-                                setIgst(num)
-                              } else {
-                                setIgst(0)
-                              }
-                            }
-                          }}
-                          className="h-11"
-                        />
-                      </div>
-                    </>
                   )}
                 </div>
               </div>
           </Card>
 
-            {/* MC/Value Added Section */}
+            {/* Payment Details - Below Bill Information */}
             <Card className="border-2 border-slate-200 dark:border-slate-700 shadow-lg">
               <div className="p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center">
-                    <span className="text-purple-500 text-xl">⚙️</span>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-xl">💳</span>
+                  <h3 className="font-bold text-foreground">Payment Details</h3>
                   </div>
-                  <h2 className="text-xl font-bold text-foreground">MC/Value Added</h2>
+                <div className="space-y-3">
+                  {paymentMethods.map((payment, index) => (
+                    <div key={payment.id} className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <label className="text-sm font-medium text-foreground mb-1 block">Payment Method</label>
+                        <select
+                          value={payment.type}
+                          onChange={(e) => {
+                            const updated = [...paymentMethods]
+                            updated[index].type = e.target.value as PaymentMethodType
+                            setPaymentMethods(updated)
+                          }}
+                          className="w-full h-11 px-3 py-2 border border-border rounded-lg bg-background text-foreground"
+                        >
+                          <option value="cash">Cash</option>
+                          <option value="card">Card</option>
+                          <option value="upi">UPI</option>
+                          <option value="cheque">Cheque</option>
+                          <option value="bank_transfer">Bank Transfer</option>
+                          <option value="other">Other</option>
+                        </select>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-sm font-semibold text-foreground mb-2 block">Weight (grams)</label>
+                      <div className="flex-1">
+                        <label className="text-sm font-medium text-foreground mb-1 block">Amount</label>
                     <Input
                       type="text"
-                      placeholder="Enter weight (e.g., 0.5, 3.960)"
-                    value={mcValueAdded.weightInput}
+                          placeholder="Amount"
+                          value={payment.amount}
                     onChange={(e) => {
                       const val = e.target.value
                       if (val === '' || /^-?\d*\.?\d*$/.test(val)) {
-                        setMcValueAdded({ ...mcValueAdded, weightInput: val })
+                              const updated = [...paymentMethods]
+                              updated[index].amount = val
+                              setPaymentMethods(updated)
                       }
                     }}
                       className="h-11"
                     />
                   </div>
-                  <div>
-                    <label className="text-sm font-semibold text-foreground mb-2 block">Rate</label>
+                      <div className="flex-1">
+                        <label className="text-sm font-medium text-foreground mb-1 block">Reference</label>
                     <Input
                       type="text"
-                      placeholder="Enter rate"
-                      value={mcValueAdded.rateInput}
+                          placeholder="Transaction ID / Cheque No."
+                          value={payment.reference}
                       onChange={(e) => {
-                        const val = e.target.value
-                        if (val === '' || /^-?\d*\.?\d*$/.test(val)) {
-                          setMcValueAdded({ ...mcValueAdded, rateInput: val })
-                        }
+                            const updated = [...paymentMethods]
+                            updated[index].reference = e.target.value
+                            setPaymentMethods(updated)
                       }}
                       className="h-11"
                     />
                   </div>
-                  <div>
-                    <label className="text-sm font-semibold text-foreground mb-2 block">Total</label>
-            <Input
-                      type="text"
-                      placeholder="Auto-calculated"
-                      value={mcValueAdded.total || ''}
-                      onChange={(e) => setMcValueAdded({ ...mcValueAdded, total: parseFloat(e.target.value) || 0 })}
-                      className="h-11 bg-muted"
-                      readOnly
-                    />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setPaymentMethods(paymentMethods.filter((_, i) => i !== index))
+                        }}
+                        className="h-11"
+                      >
+                        Remove
+                      </Button>
                   </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setPaymentMethods([
+                        ...paymentMethods,
+                        { id: Date.now().toString(), type: 'cash', amount: '', reference: '' }
+                      ])
+                    }}
+                    className="w-full"
+                  >
+                    + Add Payment Method
+                  </Button>
                 </div>
               </div>
             </Card>
@@ -1264,7 +1410,7 @@ export function SalesBilling() {
                     <Input
                       type="text"
                       placeholder="Auto-calculated"
-                      value={oldGoldExchange.total || ''}
+                      value={oldGoldExchange.total ? oldGoldExchange.total.toFixed(2) : ''}
                       onChange={(e) => setOldGoldExchange({ ...oldGoldExchange, total: parseFloat(e.target.value) || 0 })}
                       className="h-11 bg-muted font-semibold"
                       readOnly
@@ -1284,165 +1430,10 @@ export function SalesBilling() {
               </div>
             </Card>
 
-            {/* Items Section */}
-            <Card className="border-2 border-slate-200 dark:border-slate-700 shadow-lg">
-              <div className="p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
-                    <span className="text-green-500 text-xl">📦</span>
-                  </div>
-                  <h2 className="text-xl font-bold text-foreground">Add Items</h2>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-                  <div className="relative">
-              <Input
-                      placeholder="Scan or enter barcode"
-                value={newItem.barcode}
-                onChange={(e) => setNewItem({ ...newItem, barcode: e.target.value })}
-                      onKeyDown={async (e) => {
-                        // If Enter is pressed, trigger search immediately
-                        if (e.key === 'Enter' && newItem.barcode.trim()) {
-                          e.preventDefault()
-                          await handleSearchBarcode()
-                        }
-                      }}
-                      className="h-11"
-                    />
-                    {isLoadingItem && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                      </div>
-                    )}
-                  </div>
-              <Input
-                    placeholder="Item Name *"
-                value={newItem.item_name}
-                onChange={(e) => setNewItem({ ...newItem, item_name: e.target.value })}
-                    className="h-11"
-              />
-              <Input
-                type="text"
-                    placeholder="Weight (grams) * (e.g., 0.5, 3.960)"
-                value={newItem.weightInput}
-                onChange={(e) => {
-                  const val = e.target.value
-                  if (val === '' || /^-?\d*\.?\d*$/.test(val)) {
-                    setNewItem({ ...newItem, weightInput: val })
-                  }
-                }}
-                    className="h-11"
-              />
-                  <div className="relative">
-              <Input
-                type="text"
-                      placeholder="Gold Rate (auto from daily rate)"
-                      value={dailyGoldRate || ''}
-                      disabled
-                      className="h-11 bg-muted"
-                    />
-                    {!dailyGoldRate && (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-destructive">
-                        Not Set
-                      </span>
-                    )}
-                  </div>
-              <Input
-                    type="text"
-                placeholder="Making charges"
-                    value={newItem.makingChargesInput}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      if (val === '' || /^-?\d*\.?\d*$/.test(val)) {
-                        setNewItem({ ...newItem, makingChargesInput: val })
-                      }
-                    }}
-                    className="h-11"
-              />
-            </div>
-            <Button
-              onClick={handleAddItem}
-                  className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-semibold text-lg"
-            >
-                  + Add Item to Bill
-            </Button>
-              </div>
-          </Card>
-
-          {/* Items Table */}
-          {items.length > 0 && (
-              <Card className="border-2 border-slate-200 dark:border-slate-700 shadow-lg overflow-hidden">
-                <div className="p-6">
-              <h2 className="text-xl font-bold mb-4 text-foreground">Bill Items</h2>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                <thead>
-                        <tr className="border-b-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-                          <th className="text-left py-4 px-4 font-semibold text-foreground">Item</th>
-                          <th className="text-left py-4 px-4 font-semibold text-foreground">Weight</th>
-                          <th className="text-left py-4 px-4 font-semibold text-foreground">Rate</th>
-                          <th className="text-left py-4 px-4 font-semibold text-foreground">Making</th>
-                          <th className="text-left py-4 px-4 font-semibold text-foreground">Total</th>
-                          <th className="text-center py-4 px-4 font-semibold text-foreground">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map(item => (
-                          <tr key={item.id} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                            <td className="py-4 px-4 font-medium text-foreground">{item.item_name}</td>
-                            <td className="py-4 px-4 text-foreground">{item.weight}g</td>
-                            <td className="py-4 px-4 text-foreground">₹{item.rate.toFixed(2)}</td>
-                            <td className="py-4 px-4 text-foreground">₹{item.making_charges.toFixed(2)}</td>
-                            <td className="py-4 px-4 font-bold text-primary text-lg">₹{item.line_total.toFixed(2)}</td>
-                            <td className="py-4 px-4 text-center">
-                              <button 
-                                onClick={() => handleRemoveItem(item.id)} 
-                                className="text-destructive hover:text-destructive/80 font-medium px-3 py-1 rounded hover:bg-destructive/10 transition-colors"
-                              >
-                                Remove
-                              </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-                  </div>
-                </div>
-            </Card>
-          )}
         </div>
 
           {/* Sidebar - Professional Design */}
         <div className="space-y-6">
-            {/* Payment Details */}
-            <Card className="border-2 border-slate-200 dark:border-slate-700 shadow-lg">
-              <div className="p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="text-xl">💳</span>
-                  <h3 className="font-bold text-foreground">Payment Details</h3>
-                </div>
-            <div className="space-y-3">
-                  <div>
-                    <label className="text-sm font-medium text-foreground mb-1 block">Payment Method</label>
-              <Input
-                      placeholder="Enter payment method (cash, card, upi, cheque, etc.)"
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="h-11"
-              />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-foreground mb-1 block">Payment Reference</label>
-              <Input
-                      placeholder="Transaction ID / Cheque No."
-                value={paymentReference}
-                onChange={(e) => setPaymentReference(e.target.value)}
-                      className="h-11"
-              />
-                  </div>
-                </div>
-            </div>
-          </Card>
-
           {/* Bill Summary */}
             <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-2 border-primary/20 shadow-lg">
               <div className="p-6">
@@ -1457,46 +1448,24 @@ export function SalesBilling() {
               </div>
                   {saleType === 'gst' && billLevelGST > 0 && (
                     <>
-                      {cgst > 0 && (
                         <div className="flex justify-between py-2 border-b border-primary/20">
-                          <span className="text-muted-foreground">CGST:</span>
-                          <span className="text-foreground">
-                            {gstInputType === 'percentage' 
-                              ? `₹${(subtotal * (cgst / 100)).toFixed(2)}` 
-                              : `₹${cgst.toFixed(2)}`}
-                          </span>
+                        <span className="text-muted-foreground">CGST (1.5%):</span>
+                        <span className="text-foreground">₹{cgst.toFixed(2)}</span>
               </div>
-                      )}
-                      {sgst > 0 && (
                         <div className="flex justify-between py-2 border-b border-primary/20">
-                          <span className="text-muted-foreground">SGST:</span>
-                          <span className="text-foreground">
-                            {gstInputType === 'percentage' 
-                              ? `₹${(subtotal * (sgst / 100)).toFixed(2)}` 
-                              : `₹${sgst.toFixed(2)}`}
-                          </span>
+                        <span className="text-muted-foreground">SGST (1.5%):</span>
+                        <span className="text-foreground">₹{sgst.toFixed(2)}</span>
                         </div>
-                      )}
-                      {igst > 0 && (
                         <div className="flex justify-between py-2 border-b border-primary/20">
-                          <span className="text-muted-foreground">IGST:</span>
-                          <span className="text-foreground">
-                            {gstInputType === 'percentage' 
-                              ? `₹${(subtotal * (igst / 100)).toFixed(2)}` 
-                              : `₹${igst.toFixed(2)}`}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex justify-between py-2 border-b border-primary/20">
-                        <span className="text-muted-foreground font-medium">Bill-Level GST:</span>
+                        <span className="text-muted-foreground font-medium">GST Total (3%):</span>
                         <span className="text-foreground font-semibold">₹{billLevelGST.toFixed(2)}</span>
                       </div>
                     </>
                   )}
-                  {mcValueAdded.total > 0 && (
+                  {mcValueAdded.total !== 0 && (
                     <div className="flex justify-between py-2 border-b border-primary/20">
                       <span className="text-muted-foreground">MC/Value Added:</span>
-                      <span className="text-foreground">₹{mcValueAdded.total.toFixed(2)}</span>
+                      <span className="text-foreground">₹{mcValueAdded.total}</span>
                     </div>
                   )}
                   <div className="pt-2">
@@ -1527,10 +1496,42 @@ export function SalesBilling() {
                     </div>
                   )}
                   <div className="border-t-2 border-primary pt-4 mt-4">
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold text-lg text-foreground">Amount Payable:</span>
-                      <span className="font-bold text-2xl text-primary">₹{amountPayable.toFixed(2)}</span>
-                    </div>
+                    <label className="font-bold text-lg text-foreground block mb-2">Amount Payable:</label>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={amountPayableInput !== null ? amountPayableInput : amountPayable.toFixed(2)}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setAmountPayableInput(val)
+                      }}
+                      onFocus={(e) => {
+                        if (amountPayableInput === null) {
+                          const currentValue = amountPayable.toFixed(2)
+                          setAmountPayableInput(currentValue)
+                          requestAnimationFrame(() => {
+                            e.target.select()
+                          })
+                        } else {
+                          e.target.select()
+                        }
+                      }}
+                      onBlur={() => {
+                        if (amountPayableInput === null) {
+                          return
+                        }
+                        if (amountPayableInput === '' || amountPayableInput.trim() === '') {
+                          setAmountPayableInput(null)
+                          return
+                        }
+                        const numValue = parseFloat(amountPayableInput)
+                        if (isNaN(numValue) || numValue <= 0) {
+                          setAmountPayableInput(null)
+                        }
+                      }}
+                      placeholder={amountPayable.toFixed(2)}
+                      className="h-12 text-2xl font-bold text-primary text-right"
+                    />
                     {oldGoldExchange.total > 0 && (
                       <div className="mt-2 text-xs text-muted-foreground text-center">
                         (After old gold exchange credit)
@@ -1538,39 +1539,6 @@ export function SalesBilling() {
                     )}
                   </div>
               </div>
-            </div>
-          </Card>
-
-          {/* Remarks */}
-            <Card className="border-2 border-slate-200 dark:border-slate-700 shadow-lg">
-              <div className="p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="text-xl">📝</span>
-                  <h3 className="font-bold text-foreground">Remarks</h3>
-                </div>
-                <textarea
-                  placeholder="Enter any remarks or notes..."
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-                  className="w-full p-3 border border-border rounded-lg bg-background text-foreground resize-none min-h-[80px]"
-                  rows={3}
-                />
-              </div>
-            </Card>
-
-            {/* Bill Status */}
-            <Card className="border-2 border-slate-200 dark:border-slate-700 shadow-lg">
-              <div className="p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="text-xl">📊</span>
-                  <h3 className="font-bold text-foreground">Bill Status</h3>
-                </div>
-                <Input
-                  placeholder="Enter status (draft, finalized, cancelled)"
-                  value={billStatus}
-                  onChange={(e) => setBillStatus(e.target.value as 'draft' | 'finalized' | 'cancelled')}
-                  className="h-11"
-                />
               </div>
           </Card>
 
@@ -1585,7 +1553,6 @@ export function SalesBilling() {
                     return // Don't proceed if save failed
                   }
                   
-                  setBillStatus('finalized')
                   setShowInvoice(true)
                   // Trigger print after a short delay to ensure invoice is rendered
                   setTimeout(() => {
@@ -1599,7 +1566,65 @@ export function SalesBilling() {
               >
                 💾🖨️ Save and Print Bill
               </Button>
+              {oldGoldExchange.total > 0 && (
+                <Button 
+                  className="w-full h-12 bg-pink-500 hover:bg-pink-600 text-white font-semibold text-lg shadow-lg"
+                  onClick={() => {
+                    setShowPurchaseBill(true)
+                    setTimeout(() => {
+                      window.print()
+                      setTimeout(() => {
+                        setShowPurchaseBill(false)
+                      }, 500)
+                    }, 300)
+                  }}
+                >
+                  🪙 Print Old Gold Exchange Bill
+                </Button>
+              )}
             </div>
+
+            {/* Items Table - Below Save and Print Bill */}
+            {items.length > 0 && (
+              <Card className="border-2 border-slate-200 dark:border-slate-700 shadow-lg overflow-hidden">
+                <div className="p-6">
+                  <h2 className="text-xl font-bold mb-4 text-foreground">Bill Items</h2>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+                          <th className="text-left py-4 px-4 font-semibold text-foreground">Item</th>
+                          <th className="text-left py-4 px-4 font-semibold text-foreground">Weight</th>
+                          <th className="text-left py-4 px-4 font-semibold text-foreground">Rate</th>
+                          <th className="text-left py-4 px-4 font-semibold text-foreground">Making</th>
+                          <th className="text-left py-4 px-4 font-semibold text-foreground">Total</th>
+                          <th className="text-center py-4 px-4 font-semibold text-foreground">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map(item => (
+                          <tr key={item.id} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                            <td className="py-4 px-4 font-medium text-foreground">{item.item_name}</td>
+                            <td className="py-4 px-4 text-foreground">{item.weight}g</td>
+                            <td className="py-4 px-4 text-foreground">₹{item.rate.toFixed(2)}</td>
+                            <td className="py-4 px-4 text-foreground">₹{item.making_charges.toFixed(2)}</td>
+                            <td className="py-4 px-4 font-bold text-primary text-lg">₹{item.line_total.toFixed(2)}</td>
+                            <td className="py-4 px-4 text-center">
+                              <button 
+                                onClick={() => handleRemoveItem(item.id)} 
+                                className="text-destructive hover:text-destructive/80 font-medium px-3 py-1 rounded hover:bg-destructive/10 transition-colors"
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </Card>
+            )}
           </div>
         </div>
       </div>
@@ -1623,10 +1648,18 @@ export function SalesBilling() {
           cgst={cgst}
           sgst={sgst}
           igst={igst}
-          gstInputType={gstInputType}
-          paymentMethod={paymentMethod}
-          paymentReference={paymentReference}
-          remarks={remarks}
+          paymentMethods={paymentMethods}
+        />
+      )}
+
+      {/* Purchase Bill Print Component (Old Gold Exchange) */}
+      {showPurchaseBill && oldGoldExchange.total > 0 && (
+        <PurchaseBillPrint
+          customer={customer as Customer | null}
+          billDate={billDate}
+          oldGoldExchange={oldGoldExchange}
+          billNo={billNo || ''}
+          staffName={username}
         />
       )}
     </div>
