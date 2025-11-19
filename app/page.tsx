@@ -16,7 +16,8 @@ export default function Home() {
       const userData = JSON.parse(storedUser)
       setUser(userData)
       setIsLoggedIn(true)
-      router.push('/dashboard')
+      router.push('/dashboard/sales-billing')
+      router.push('/dashboard/sales-billing')
     }
     setIsLoading(false)
   }, [router])

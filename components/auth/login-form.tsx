@@ -55,7 +55,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
       // This is a simplified version
 
       onLogin(userData.username, userData.role as 'admin' | 'staff')
-      router.push('/dashboard')
+      router.push('/dashboard/sales-billing')
     } catch (err: any) {
       setError(err.message || 'Login failed. Please try again.')
     } finally {
@@ -140,10 +140,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
           </form>
 
           {/* Info */}
-          <div className="mt-6 p-4 bg-[#f7e7d4] rounded-xl text-sm text-[#6b563f] border border-[#f0d7be]">
-            <p className="font-semibold mb-1">Note</p>
-            <p>Use your database credentials to login</p>
-          </div>
+          
         </div>
       </Card>
     </div>
