@@ -195,9 +195,22 @@ export function InvoicePrint({
 
         .invoice-info {
           display: flex;
-          justify-content: center;
+          justify-content: space-between;
           margin: 18px 0;
           gap: 50px;
+        }
+
+        .invoice-info .left-section {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .invoice-info .right-section {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          text-align: right;
         }
 
         .invoice-info .block {
@@ -217,6 +230,42 @@ export function InvoicePrint({
           font-weight: 700;
           margin-top: 4px;
           line-height: 1.2;
+        }
+
+        .invoice-payment-section {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 20px;
+          gap: 40px;
+          z-index: 1;
+        }
+
+        .invoice-payment-section .left {
+          flex: 1;
+        }
+
+        .invoice-payment-section .right {
+          flex: 1;
+          text-align: right;
+        }
+
+        .invoice-payment-mode {
+          margin-bottom: 16px;
+        }
+
+        .invoice-payment-mode .label {
+          font-size: 14px;
+          color: #6b6b6b;
+          letter-spacing: 0.5px;
+          line-height: 1.2;
+          margin-bottom: 6px;
+          font-weight: 700;
+        }
+
+        .invoice-payment-mode .payment-item {
+          font-size: 16px;
+          color: #222;
+          line-height: 1.8;
         }
 
         .invoice-items {
@@ -369,45 +418,49 @@ export function InvoicePrint({
           </div>
 
           <div className="invoice-info">
-            <div className="block">
-              <div className="label">DATE:-</div>
-              <div className="value">{formatDate(billDate)}</div>
-            </div>
-            <div className="block">
-              <div className="label">RATE:-</div>
-              <div className="value">{dailyGoldRate.toFixed(2)}</div>
-            </div>
-            {billNo && (
-              <div className="block">
-                <div className="label">BILL NO:-</div>
-                <div className="value">{billNo}</div>
-              </div>
-            )}
-          </div>
-
-          {customer && (
-            <div className="invoice-info" style={{ marginTop: '12px', marginBottom: '12px' }}>
-              <div className="block">
-                <div className="label">CUSTOMER:-</div>
-                <div className="value">{customer.name || 'N/A'}</div>
-              </div>
-              {customer.phone && (
+            <div className="left-section">
+              {billNo && (
                 <div className="block">
-                  <div className="label">PHONE:-</div>
-                  <div className="value">{customer.phone}</div>
+                  <div className="label">BILL NO:-</div>
+                  <div className="value">{billNo}</div>
                 </div>
               )}
+              {customer && (
+                <>
+                  <div className="block">
+                    <div className="label">CUSTOMER:-</div>
+                    <div className="value">{customer.name || 'N/A'}</div>
+                  </div>
+                  {customer.phone && (
+                    <div className="block">
+                      <div className="label">PHONE:-</div>
+                      <div className="value">{customer.phone}</div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-          )}
+            <div className="right-section">
+              <div className="block">
+                <div className="label">DATE:-</div>
+                <div className="value">{formatDate(billDate)}</div>
+              </div>
+              <div className="block">
+                <div className="label">RATE:-</div>
+                <div className="value">{dailyGoldRate.toFixed(2)}</div>
+              </div>
+            </div>
+          </div>
 
           <div className="invoice-items">
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: '40%', textAlign: 'left', paddingLeft: '12px' }}>ITEM</th>
-                  <th style={{ width: '18%' }}>WEIGHT</th>
-                  <th style={{ width: '20%' }}>RATE</th>
-                  <th style={{ width: '22%' }}>TOTAL</th>
+                  <th style={{ width: '30%', textAlign: 'left', paddingLeft: '12px' }}>ITEM</th>
+                  <th style={{ width: '15%' }}>WEIGHT</th>
+                  <th style={{ width: '15%' }}>RATE</th>
+                  <th style={{ width: '15%' }}>MAKING</th>
+                  <th style={{ width: '25%' }}>TOTAL</th>
                 </tr>
               </thead>
               <tbody>
@@ -416,6 +469,7 @@ export function InvoicePrint({
                     <td className="item">{item.item_name || 'Item'}</td>
                     <td>{item.weight.toFixed(2)}g</td>
                     <td>₹{item.rate.toFixed(2)}</td>
+                    <td>₹{(item.making_charges || 0).toFixed(2)}</td>
                     <td style={{ fontWeight: 600 }}>₹{item.line_total.toFixed(2)}</td>
                   </tr>
                 ))}
@@ -424,7 +478,7 @@ export function InvoicePrint({
                     <td className="item" style={{ fontWeight: 700, textDecoration: 'underline' }}>
                       MC / VALUE ADDED
                     </td>
-                    <td colSpan={2} style={{ textAlign: 'center' }}>-</td>
+                    <td colSpan={3} style={{ textAlign: 'center' }}>-</td>
                     <td style={{ fontWeight: 700 }}>₹{mcValueAdded.total.toFixed(2)}</td>
                   </tr>
                 )}
@@ -432,7 +486,7 @@ export function InvoicePrint({
                   <>
                     {cgst > 0 && (
                       <tr>
-                        <td className="item" colSpan={3} style={{ textAlign: 'center', paddingRight: '12px' }}>
+                        <td className="item" colSpan={4} style={{ textAlign: 'center', paddingRight: '12px' }}>
                           CGST (1.5%)
                         </td>
                         <td style={{ fontWeight: 600 }}>₹{cgst.toFixed(2)}</td>
@@ -440,7 +494,7 @@ export function InvoicePrint({
                     )}
                     {sgst > 0 && (
                       <tr>
-                        <td className="item" colSpan={3} style={{ textAlign: 'center', paddingRight: '12px' }}>
+                        <td className="item" colSpan={4} style={{ textAlign: 'center', paddingRight: '12px' }}>
                           SGST (1.5%)
                         </td>
                         <td style={{ fontWeight: 600 }}>₹{sgst.toFixed(2)}</td>
@@ -448,7 +502,7 @@ export function InvoicePrint({
                     )}
                     {igst > 0 && (
                       <tr>
-                        <td className="item" colSpan={3} style={{ textAlign: 'center', paddingRight: '12px' }}>
+                        <td className="item" colSpan={4} style={{ textAlign: 'center', paddingRight: '12px' }}>
                           IGST
                         </td>
                         <td style={{ fontWeight: 600 }}>₹{igst.toFixed(2)}</td>
@@ -458,7 +512,7 @@ export function InvoicePrint({
                 )}
                 {discount > 0 && (
                   <tr>
-                    <td className="item" colSpan={3} style={{ textAlign: 'center', paddingRight: '12px' }}>
+                    <td className="item" colSpan={4} style={{ textAlign: 'center', paddingRight: '12px' }}>
                       DISCOUNT
                     </td>
                     <td style={{ color: '#c0392b', fontWeight: 600 }}>-₹{discount.toFixed(2)}</td>
@@ -466,62 +520,70 @@ export function InvoicePrint({
                 )}
                 {oldGoldExchange.total > 0 && (
                   <tr>
-                    <td className="item" colSpan={3} style={{ textAlign: 'center', paddingRight: '12px' }}>
+                    <td className="item" colSpan={4} style={{ textAlign: 'center', paddingRight: '12px' }}>
                       OLD GOLD CREDIT
                     </td>
                     <td style={{ color: '#c0392b', fontWeight: 600 }}>-₹{oldGoldExchange.total.toFixed(2)}</td>
                   </tr>
                 )}
+                <tr style={{ borderTop: '2px solid #222' }}>
+                  <td className="item" colSpan={4} style={{ textAlign: 'center', paddingRight: '12px', fontWeight: 700, fontSize: '18px' }}>
+                    TOTAL
+                  </td>
+                  <td style={{ fontWeight: 800, fontSize: '20px', color: '#c0392b' }}>
+                    ₹{amountPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
 
-          <div className="invoice-totals">
-            <div className="right">
-              <div className="label" style={{ fontSize: '18px', marginBottom: '10px' }}>TOTAL</div>
-              <div className="amount">₹{amountPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-            </div>
-          </div>
-
           <div className="invoice-watermark">PJ</div>
 
-          {paymentMethods && paymentMethods.length > 0 && (
-            <div className="invoice-info" style={{ marginTop: '16px', marginBottom: '10px' }}>
-              <div className="block">
-                <div className="label">PAYMENT DETAILS:-</div>
-                {paymentMethods.map((payment, index) => {
-                  const amount = parseFloat(payment.amount) || 0
-                  const typeLabel = payment.type === 'cash' ? 'Cash' :
-                    payment.type === 'card' ? 'Card' :
-                    payment.type === 'upi' ? 'UPI' :
-                    payment.type === 'cheque' ? 'Cheque' :
-                    payment.type === 'bank_transfer' ? 'Bank Transfer' : 'Other'
-                  return (
-                    <div key={payment.id || index} style={{ marginTop: index > 0 ? '8px' : '4px' }}>
-                      <div className="value">
-                        {typeLabel}: ₹{amount.toFixed(2)}
-                        {payment.reference && ` (Ref: ${payment.reference})`}
-                      </div>
+          <div className="invoice-payment-section">
+            <div className="left">
+              <div className="invoice-payment-mode">
+                <div className="label">PAYMENT MODE</div>
+                {paymentMethods && paymentMethods.length > 0 ? (
+                  <>
+                    {paymentMethods.map((payment, index) => {
+                      const amount = parseFloat(payment.amount) || 0
+                      const typeLabel = payment.type === 'cash' ? 'Cash' :
+                        payment.type === 'card' ? 'Card' :
+                        payment.type === 'upi' ? 'UPI' :
+                        payment.type === 'cheque' ? 'Cheque' :
+                        payment.type === 'bank_transfer' ? 'Bank Transfer' : 'Other'
+                      return (
+                        <div key={payment.id || index} className="payment-item">
+                          {typeLabel}: ₹{amount.toFixed(2)}
+                          {payment.reference && ` (Ref: ${payment.reference})`}
+                        </div>
+                      )
+                    })}
+                    <div className="payment-item" style={{ fontWeight: 700, marginTop: '4px' }}>
+                      Total: ₹{paymentMethods.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0).toFixed(2)}
                     </div>
-                  )
-                })}
-                <div className="value" style={{ marginTop: '8px', fontWeight: 'bold' }}>
-                  Total: ₹{paymentMethods.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0).toFixed(2)}
-                </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="payment-item">Cash -</div>
+                    <div className="payment-item">Card -</div>
+                    <div className="payment-item">UPI -</div>
+                  </>
+                )}
+              </div>
+              <div style={{ marginTop: '12px' }}>
+                <p className="invoice-small-header">NO EXCHANGE</p>
+                <p className="invoice-small-header">NO BREAKAGE GUARANTEE</p>
+                <p className="invoice-small-header">RETURN 5% LESS IN CASH</p>
               </div>
             </div>
-          )}
-
-
-          <div className="invoice-footer">
-            <div className="left">
-              <p className="invoice-small-header">NO EXCHANGE</p>
-              <p className="invoice-small-header">NO BREAKAGE GUARANTEE</p>
-              <p className="invoice-small-header">RETURN 5% LESS IN CASH</p>
-            </div>
-            <div className="invoice-signature">
-              <div style={{ fontSize: '10px', color: '#6b6b6b', lineHeight: '1.2' }}>FOR</div>
-              <div style={{ fontWeight: 700, marginTop: '4px', fontSize: '13px', lineHeight: '1.2' }}>PRAGYA JEWELS</div>
+            <div className="right">
+              <div className="invoice-signature" style={{ marginTop: '20px' }}>
+                <div style={{ fontSize: '10px', color: '#6b6b6b', lineHeight: '1.2' }}>FOR</div>
+                <div style={{ fontWeight: 700, marginTop: '4px', fontSize: '13px', lineHeight: '1.2' }}>PRAGYA JEWELS</div>
+                <div style={{ marginTop: '40px', fontSize: '14px', fontWeight: 600 }}>Authorized Signature</div>
+              </div>
             </div>
           </div>
         </div>

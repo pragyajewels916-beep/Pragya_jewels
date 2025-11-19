@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
 import type { Customer } from '@/lib/db/queries'
-import { createBill, createBillItems } from '@/lib/db/queries'
+import { createBill, createBillItems, getBillById, getBillItems, updateBill } from '@/lib/db/queries'
 import { toast } from '@/components/ui/use-toast'
 import { InvoicePrint } from './invoice-print'
 import { PurchaseBillPrint } from './purchase-bill-print'
@@ -22,7 +22,11 @@ interface BillItem {
   line_total: number
 }
 
-export function SalesBilling() {
+interface SalesBillingProps {
+  editBillId?: number
+}
+
+export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [customerSearch, setCustomerSearch] = useState('')
   const [customerMatches, setCustomerMatches] = useState<Customer[]>([])
@@ -100,6 +104,8 @@ export function SalesBilling() {
   const [username, setUsername] = useState<string>('')
   const [showInvoice, setShowInvoice] = useState(false)
   const [showPurchaseBill, setShowPurchaseBill] = useState(false)
+  const [currentBillId, setCurrentBillId] = useState<number | null>(null)
+  const [isLoadingBill, setIsLoadingBill] = useState(false)
 
   // Get user info from session and fetch daily gold rate
   useEffect(() => {
@@ -143,6 +149,110 @@ export function SalesBilling() {
 
     fetchDailyGoldRate()
   }, [])
+
+  // Load bill data when editing
+  useEffect(() => {
+    const loadBillData = async () => {
+      if (!editBillId) return
+
+      setIsLoadingBill(true)
+      try {
+        const billData = await getBillById(editBillId)
+        const billItemsData = await getBillItems(editBillId)
+
+        // Set bill basic info
+        if (billData.bill_date) {
+          setBillDate(billData.bill_date.split('T')[0])
+        }
+        if (billData.bill_no) {
+          setBillNo(billData.bill_no)
+        }
+        setCurrentBillId(editBillId)
+
+        // Set customer
+        if (billData.customers) {
+          setCustomer(billData.customers as Customer)
+        }
+
+        // Set sale type
+        if (billData.sale_type) {
+          setSaleType(billData.sale_type)
+        }
+
+        // Set discount
+        if (billData.discount) {
+          setDiscount(billData.discount)
+          setDiscountInput(billData.discount.toString())
+        }
+
+        // Set payment methods
+        if (billData.payment_method) {
+          try {
+            const paymentMethodsData = JSON.parse(billData.payment_method)
+            if (Array.isArray(paymentMethodsData)) {
+              setPaymentMethods(paymentMethodsData)
+            }
+          } catch (e) {
+            console.error('Error parsing payment methods:', e)
+          }
+        }
+
+        // Set bill items
+        if (billItemsData && billItemsData.length > 0) {
+          const formattedItems: BillItem[] = billItemsData.map((item: any) => ({
+            id: item.id.toString(),
+            barcode: item.barcode || '',
+            item_name: item.item_name || '',
+            weight: item.weight || 0,
+            weightInput: (item.weight || 0).toString(),
+            rate: item.rate || 0,
+            making_charges: item.making_charges || 0,
+            makingChargesInput: (item.making_charges || 0).toString(),
+            gst_rate: item.gst_rate || 0,
+            line_total: item.line_total || 0,
+          }))
+          setItems(formattedItems)
+        }
+
+        // Load old gold exchange if exists
+        const supabase = createClient()
+        const { data: oldGold, error: oldGoldError } = await supabase
+          .from('old_gold_exchanges')
+          .select('*')
+          .eq('bill_id', editBillId)
+          .single()
+
+        if (!oldGoldError && oldGold) {
+          setOldGoldExchange({
+            weight: oldGold.weight || 0,
+            weightInput: (oldGold.weight || 0).toString(),
+            purity: oldGold.purity || '',
+            rate: oldGold.rate_per_gram || 0,
+            rateInput: (oldGold.rate_per_gram || 0).toString(),
+            total: oldGold.total_value || 0,
+            hsn_code: oldGold.hsn_code || '7113',
+            particulars: oldGold.notes || '',
+          })
+        }
+
+        toast({
+          title: 'Bill Loaded',
+          description: 'Bill data loaded successfully. You can now edit it.',
+        })
+      } catch (error: any) {
+        console.error('Error loading bill:', error)
+        toast({
+          title: 'Error',
+          description: error.message || 'Failed to load bill data',
+          variant: 'destructive',
+        })
+      } finally {
+        setIsLoadingBill(false)
+      }
+    }
+
+    loadBillData()
+  }, [editBillId])
 
   // Live customer search with debouncing
   useEffect(() => {
@@ -753,8 +863,20 @@ export function SalesBilling() {
         bill_status: 'finalized' as const,
       }
 
-      // Create bill
-      const createdBill = await createBill(billData)
+      let billId: number
+      let createdBill: any
+
+      // Update existing bill or create new one
+      if (currentBillId) {
+        // Update existing bill
+        createdBill = await updateBill(currentBillId, billData)
+        billId = currentBillId
+      } else {
+        // Create new bill
+        createdBill = await createBill(billData)
+        billId = createdBill.id
+        setCurrentBillId(billId)
+      }
       
       // Update bill number if it was generated
       if (createdBill.bill_no && createdBill.bill_no !== finalBillNo) {
@@ -786,8 +908,14 @@ export function SalesBilling() {
         })
       }
 
+      // Delete old bill items if editing, then create new ones
+      if (currentBillId) {
+        const supabase = createClient()
+        await supabase.from('bill_items').delete().eq('bill_id', billId)
+      }
+      
       // Save bill items
-      await createBillItems(createdBill.id, billItemsData)
+      await createBillItems(billId, billItemsData)
 
       // Handle old gold exchange (pink slip) if present
       // This is a credit/deduction on the sales bill, NOT a separate purchase transaction
@@ -802,24 +930,55 @@ export function SalesBilling() {
             oldGoldExchange.hsn_code && `HSN Code: ${oldGoldExchange.hsn_code}`,
           ].filter(Boolean).join(' | ') || null
 
-          const { error: oldGoldError } = await supabase
+          // Check if old gold exchange already exists for this bill
+          const { data: existingOldGold } = await supabase
             .from('old_gold_exchanges')
-            .insert({
-              bill_id: createdBill.id,
-              weight: oldGoldExchange.weight || parseFloat(oldGoldExchange.weightInput) || 0,
-              purity: oldGoldExchange.purity || null,
-              rate_per_gram: oldGoldExchange.rate || parseFloat(oldGoldExchange.rateInput) || 0,
-              total_value: oldGoldExchange.total,
-              notes: oldGoldNotes,
-            })
+            .select('id')
+            .eq('bill_id', billId)
+            .single()
 
-          if (oldGoldError) {
-            console.error('Error saving to old_gold_exchanges:', oldGoldError)
-            toast({
-              title: 'Warning',
-              description: 'Bill saved but old gold exchange data may not have been saved correctly',
-              variant: 'destructive',
-            })
+          if (existingOldGold) {
+            // Update existing old gold exchange
+            const { error: oldGoldError } = await supabase
+              .from('old_gold_exchanges')
+              .update({
+                weight: oldGoldExchange.weight || parseFloat(oldGoldExchange.weightInput) || 0,
+                purity: oldGoldExchange.purity || null,
+                rate_per_gram: oldGoldExchange.rate || parseFloat(oldGoldExchange.rateInput) || 0,
+                total_value: oldGoldExchange.total,
+                notes: oldGoldNotes,
+              })
+              .eq('id', existingOldGold.id)
+
+            if (oldGoldError) {
+              console.error('Error updating old_gold_exchanges:', oldGoldError)
+              toast({
+                title: 'Warning',
+                description: 'Bill saved but old gold exchange data may not have been updated correctly',
+                variant: 'destructive',
+              })
+            }
+          } else {
+            // Insert new old gold exchange
+            const { error: oldGoldError } = await supabase
+              .from('old_gold_exchanges')
+              .insert({
+                bill_id: billId,
+                weight: oldGoldExchange.weight || parseFloat(oldGoldExchange.weightInput) || 0,
+                purity: oldGoldExchange.purity || null,
+                rate_per_gram: oldGoldExchange.rate || parseFloat(oldGoldExchange.rateInput) || 0,
+                total_value: oldGoldExchange.total,
+                notes: oldGoldNotes,
+              })
+
+            if (oldGoldError) {
+              console.error('Error saving to old_gold_exchanges:', oldGoldError)
+              toast({
+                title: 'Warning',
+                description: 'Bill saved but old gold exchange data may not have been saved correctly',
+                variant: 'destructive',
+              })
+            }
           }
         } catch (error) {
           console.error('Error handling old gold exchange:', error)
@@ -829,11 +988,26 @@ export function SalesBilling() {
             variant: 'destructive',
           })
         }
+      } else if (currentBillId) {
+        // If editing and old gold exchange is removed (total is 0), delete it
+        try {
+          const supabase = createClient()
+          const { error: deleteError } = await supabase
+            .from('old_gold_exchanges')
+            .delete()
+            .eq('bill_id', billId)
+
+          if (deleteError) {
+            console.error('Error deleting old_gold_exchanges:', deleteError)
+          }
+        } catch (error) {
+          console.error('Error deleting old gold exchange:', error)
+        }
       }
 
       toast({
-        title: 'Bill Saved Successfully',
-        description: `Bill ${finalBillNo} has been saved and finalized`,
+        title: currentBillId ? 'Bill Updated Successfully' : 'Bill Saved Successfully',
+        description: `Bill ${finalBillNo} has been ${currentBillId ? 'updated' : 'saved'} and finalized`,
       })
 
       return true
@@ -848,11 +1022,30 @@ export function SalesBilling() {
     }
   }
 
+  // Show loading state while bill is being loaded
+  if (isLoadingBill) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-foreground font-semibold">Loading bill data...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
       <div className="p-6 max-w-7xl mx-auto">
         {/* Professional Header */}
         <div className="mb-8 bg-white dark:bg-slate-800 rounded-xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
+          {currentBillId && (
+            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg">
+              <p className="text-sm font-semibold text-blue-800 dark:text-blue-200">
+                ✏️ Editing Bill: {billNo || `#${currentBillId}`}
+              </p>
+            </div>
+          )}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Customer Information Card - In Header */}
             <Card className="border-2 border-slate-200 dark:border-slate-700 shadow-lg lg:col-span-2">
