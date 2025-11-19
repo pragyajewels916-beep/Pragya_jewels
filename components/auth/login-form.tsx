@@ -64,29 +64,39 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-secondary flex items-center justify-center p-4">
-      <Card className="w-full max-w-md border-2 border-primary/20">
-        <div className="p-8">
+    <div className="relative min-h-screen bg-gradient-to-br from-[#fdf8f4] via-white to-[#f3ede7] flex items-center justify-center px-4 py-12 overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 opacity-40">
+        <div className="absolute -top-24 -right-10 h-64 w-64 rounded-full bg-[#f4c27f]/40 blur-3xl" />
+        <div className="absolute bottom-0 left-10 h-72 w-72 rounded-full bg-[#c18e4a]/30 blur-3xl" />
+      </div>
+      <Card className="relative w-full max-w-xl border border-[#f0d7be] shadow-2xl shadow-[#b5803d]/20">
+        <div className="grid gap-8 p-10">
           {/* Header */}
-          <div className="mb-8">
-            <div className="flex items-center gap-3 mb-4">
+          <div className="flex flex-col items-center text-center space-y-4 border-b border-[#f0d7be] pb-8">
+            <div className="w-20 h-20 rounded-full bg-white shadow-inner shadow-[#e2b178]/40 flex items-center justify-center ring-1 ring-[#f0d7be]">
               <Image
                 src="/Logo.png"
                 alt="Pragya Jewels Logo"
-                width={60}
-                height={60}
+                width={70}
+                height={70}
                 className="object-contain"
+                priority
               />
             </div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">Jewelry ERP</h1>
-            <p className="text-muted-foreground">Management System</p>
+            <div>
+              <p className="text-sm uppercase tracking-[0.3em] text-[#b5803d]/80 font-semibold">
+                Pragya Jewels
+              </p>
+              <h1 className="text-3xl font-bold text-[#492a11] mt-1">Jewelry ERP</h1>
+              <p className="text-base text-[#7a6756]">Management System Suite</p>
+            </div>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {/* Username */}
             <div>
-              <label className="text-sm font-medium text-foreground mb-2 block">
+              <label className="text-sm font-semibold text-[#6b563f] mb-2 block">
                 Username
               </label>
               <Input
@@ -100,7 +110,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
 
             {/* Password */}
             <div>
-              <label className="text-sm font-medium text-foreground mb-2 block">
+              <label className="text-sm font-semibold text-[#6b563f] mb-2 block">
                 Password
               </label>
               <Input
@@ -114,7 +124,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
 
             {/* Error Message */}
             {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              <div className="p-3 bg-red-50/80 border border-red-200 rounded-lg text-red-700 text-sm">
                 {error}
               </div>
             )}
@@ -123,15 +133,15 @@ export function LoginForm({ onLogin }: LoginFormProps) {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-2 mt-6 disabled:opacity-50"
+              className="w-full bg-[#c37b27] hover:bg-[#a6661d] text-white font-semibold py-2 mt-6 disabled:opacity-50"
             >
               {loading ? 'Logging in...' : 'Login'}
             </Button>
           </form>
 
           {/* Info */}
-          <div className="mt-6 p-3 bg-secondary rounded-lg text-sm text-muted-foreground">
-            <p className="font-medium mb-1">Note:</p>
+          <div className="mt-6 p-4 bg-[#f7e7d4] rounded-xl text-sm text-[#6b563f] border border-[#f0d7be]">
+            <p className="font-semibold mb-1">Note</p>
             <p>Use your database credentials to login</p>
           </div>
         </div>

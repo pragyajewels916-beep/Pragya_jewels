@@ -7,6 +7,19 @@ import { Input } from '@/components/ui/input'
 import { getItems, createItem, updateItem, deleteItem, type Item } from '@/lib/db/queries'
 import { toast } from '@/components/ui/use-toast'
 
+const categoryOptions = [
+  'Necklaces',
+  'Earrings',
+  'Bracelets',
+  'Rings',
+  'Anklets',
+  'Brooches & Pins',
+  'Pendants & Charms',
+  'Cufflinks',
+  'Body Jewelry',
+  'Watches',
+]
+
 export function Inventory() {
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
@@ -191,76 +204,144 @@ export function Inventory() {
             {editingId ? 'Edit Item' : 'Add New Item'}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-            <Input
-              placeholder="Barcode"
-              value={newItem.barcode || ''}
-              onChange={(e) => setNewItem({ ...newItem, barcode: e.target.value })}
-            />
-            <Input
-              placeholder="Item Name"
-              value={newItem.item_name || ''}
-              onChange={(e) => setNewItem({ ...newItem, item_name: e.target.value })}
-            />
-            <Input
-              placeholder="Category"
-              value={newItem.category || ''}
-              onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
-            />
-            <Input
-              type="number"
-              placeholder="Weight (grams)"
-              step="0.01"
-              value={newItem.weight || ''}
-              onChange={(e) => setNewItem({ ...newItem, weight: parseFloat(e.target.value) || 0 })}
-            />
-            <Input
-              placeholder="Purity (e.g., 22K, 18K)"
-              value={newItem.purity || ''}
-              onChange={(e) => setNewItem({ ...newItem, purity: e.target.value })}
-            />
-            <Input
-              type="number"
-              placeholder="Making Charges"
-              step="0.01"
-              value={newItem.making_charges || ''}
-              onChange={(e) => setNewItem({ ...newItem, making_charges: parseFloat(e.target.value) || 0 })}
-            />
-            <Input
-              placeholder="Stone Type"
-              value={newItem.stone_type || ''}
-              onChange={(e) => setNewItem({ ...newItem, stone_type: e.target.value })}
-            />
-            <Input
-              placeholder="HSN Code"
-              value={newItem.hsn_code || ''}
-              onChange={(e) => setNewItem({ ...newItem, hsn_code: e.target.value })}
-            />
-            <Input
-              type="number"
-              placeholder="GST Rate (%)"
-              step="0.1"
-              value={newItem.gst_rate || ''}
-              onChange={(e) => setNewItem({ ...newItem, gst_rate: parseFloat(e.target.value) || 0 })}
-            />
-            <Input
-              type="number"
-              placeholder="Price per gram"
-              step="0.01"
-              value={newItem.price_per_gram || ''}
-              onChange={(e) => setNewItem({ ...newItem, price_per_gram: parseFloat(e.target.value) || 0 })}
-            />
-            <Input
-              type="number"
-              placeholder="Net Price"
-              step="0.01"
-              value={newItem.net_price || ''}
-              onChange={(e) => setNewItem({ ...newItem, net_price: parseFloat(e.target.value) || 0 })}
-            />
-            <div>
-              <label className="text-sm font-medium text-foreground mb-2 block">Stock Status</label>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">
+                Barcode <span className="text-destructive">*</span>
+              </label>
+              <Input
+                placeholder="Scan or enter barcode"
+                required
+                value={newItem.barcode || ''}
+                onChange={(e) => setNewItem({ ...newItem, barcode: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">
+                Item Name <span className="text-destructive">*</span>
+              </label>
+              <Input
+                placeholder="Enter item name"
+                required
+                value={newItem.item_name || ''}
+                onChange={(e) => setNewItem({ ...newItem, item_name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">
+                Category <span className="text-destructive">*</span>
+              </label>
+              <select
+                value={newItem.category || ''}
+                required
+                onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
+                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground"
+              >
+                <option value="" disabled>
+                  Select category
+                </option>
+                {categoryOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">
+                Weight (grams) <span className="text-destructive">*</span>
+              </label>
+              <Input
+                type="number"
+                placeholder="Weight in grams"
+                step="0.01"
+                required
+                value={newItem.weight || ''}
+                onChange={(e) => setNewItem({ ...newItem, weight: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">
+                Purity (e.g., 22K, 18K) <span className="text-destructive">*</span>
+              </label>
+              <Input
+                placeholder="Purity"
+                required
+                value={newItem.purity || ''}
+                onChange={(e) => setNewItem({ ...newItem, purity: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Making Charges</label>
+              <Input
+                type="number"
+                placeholder="Making charges"
+                step="0.01"
+                value={newItem.making_charges || ''}
+                onChange={(e) => setNewItem({ ...newItem, making_charges: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Stone Type</label>
+              <Input
+                placeholder="Stone type"
+                value={newItem.stone_type || ''}
+                onChange={(e) => setNewItem({ ...newItem, stone_type: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">HSN Code</label>
+              <Input
+                placeholder="HSN code"
+                value={newItem.hsn_code || ''}
+                onChange={(e) => setNewItem({ ...newItem, hsn_code: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">GST Rate (%)</label>
+              <Input
+                type="number"
+                placeholder="GST rate"
+                step="0.1"
+                value={newItem.gst_rate || ''}
+                onChange={(e) => setNewItem({ ...newItem, gst_rate: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">
+                Price per gram <span className="text-destructive">*</span>
+              </label>
+              <Input
+                type="number"
+                placeholder="Rate per gram"
+                step="0.01"
+                required
+                value={newItem.price_per_gram || ''}
+                onChange={(e) => setNewItem({ ...newItem, price_per_gram: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Net Price</label>
+              <Input
+                type="number"
+                placeholder="Net price"
+                step="0.01"
+                value={newItem.net_price || ''}
+                onChange={(e) => setNewItem({ ...newItem, net_price: parseFloat(e.target.value) || 0 })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">
+                Stock Status <span className="text-destructive">*</span>
+              </label>
               <select
                 value={newItem.stock_status || 'in_stock'}
-                onChange={(e) => setNewItem({ ...newItem, stock_status: e.target.value as 'in_stock' | 'reserved' | 'sold' | 'returned' })}
+                required
+                onChange={(e) =>
+                  setNewItem({
+                    ...newItem,
+                    stock_status: e.target.value as 'in_stock' | 'reserved' | 'sold' | 'returned',
+                  })
+                }
                 className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground"
               >
                 <option value="in_stock">In Stock</option>
@@ -269,17 +350,25 @@ export function Inventory() {
                 <option value="returned">Returned</option>
               </select>
             </div>
-            <Input
-              placeholder="Location"
-              value={newItem.location || ''}
-              onChange={(e) => setNewItem({ ...newItem, location: e.target.value })}
-            />
-            <Input
-              placeholder="Remarks"
-              value={newItem.remarks || ''}
-              onChange={(e) => setNewItem({ ...newItem, remarks: e.target.value })}
-              className="md:col-span-2"
-            />
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-foreground">
+                Location <span className="text-destructive">*</span>
+              </label>
+              <Input
+                placeholder="Store location / tray"
+                required
+                value={newItem.location || ''}
+                onChange={(e) => setNewItem({ ...newItem, location: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-sm font-medium text-foreground">Remarks</label>
+              <Input
+                placeholder="Notes or remarks"
+                value={newItem.remarks || ''}
+                onChange={(e) => setNewItem({ ...newItem, remarks: e.target.value })}
+              />
+            </div>
           </div>
           <div className="flex gap-2">
             <Button
