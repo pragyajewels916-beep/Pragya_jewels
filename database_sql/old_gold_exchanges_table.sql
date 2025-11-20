@@ -41,3 +41,5 @@ COMMENT ON COLUMN old_gold_exchanges.total_value IS 'Total value of old gold (we
 
 
 
+
+

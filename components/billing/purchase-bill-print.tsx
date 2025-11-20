@@ -192,7 +192,11 @@ export function PurchaseBillPrint({
                 Mr./Mrs: <span className="purchase-pink-write">{customer?.name || 'N/A'}</span>
               </div>
               <div>
-                No: <span className="purchase-pink-write">{billNo || 'N/A'}</span>
+                {billNo && (
+                  <>
+                    No: <span className="purchase-pink-write">{billNo}</span>
+                  </>
+                )}
               </div>
             </div>
 

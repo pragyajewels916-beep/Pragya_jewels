@@ -106,6 +106,76 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
   const [showPurchaseBill, setShowPurchaseBill] = useState(false)
   const [currentBillId, setCurrentBillId] = useState<number | null>(null)
   const [isLoadingBill, setIsLoadingBill] = useState(false)
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [editingItemData, setEditingItemData] = useState({
+    barcode: '',
+    item_name: '',
+    weightInput: '',
+    rateInput: '',
+    makingChargesInput: '',
+  })
+
+  const resetBillForm = () => {
+    setCustomer(null)
+    setCustomerSearch('')
+    setCustomerMatches([])
+    setShowCustomerDropdown(false)
+    setShowAddCustomerForm(false)
+    setNewCustomerData({
+      name: '',
+      phone: '',
+      email: '',
+      address: '',
+      notes: '',
+    })
+    setItems([])
+    setNewItem({
+      barcode: '',
+      item_name: '',
+      weight: 0,
+      weightInput: '',
+      rate: 0,
+      making_charges: 0,
+      makingChargesInput: '',
+    })
+    setPaymentMethods([])
+    setDiscount(0)
+    setDiscountInput('')
+    setSaleType('gst')
+    setNongstAuthId('')
+    setBillDate(new Date().toISOString().split('T')[0])
+    setBillNo('')
+    setCurrentBillId(null)
+    setAmountPayableInput(null)
+    setMcValueAdded({
+      weight: 0,
+      weightInput: '',
+      rate: 0,
+      rateInput: '',
+      total: 0,
+    })
+    setOldGoldExchange({
+      weight: 0,
+      weightInput: '',
+      purity: '',
+      rate: 0,
+      rateInput: '',
+      total: 0,
+      hsn_code: '7113',
+      particulars: '',
+    })
+    setPurchaseBillId('')
+    setEditingItemId(null)
+    setEditingItemData({
+      barcode: '',
+      item_name: '',
+      weightInput: '',
+      rateInput: '',
+      makingChargesInput: '',
+    })
+    setShowInvoice(false)
+    setShowPurchaseBill(false)
+  }
 
   // Get user info from session and fetch daily gold rate
   useEffect(() => {
@@ -116,12 +186,6 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
       setUserRole(userData.role || 'staff')
       setUsername(userData.username || '')
       setCanAuthorizeNonGst(userData.can_authorize_nongst || false)
-      
-      // Staff can ONLY use GST, never Non-GST - enforce this
-      if (userData.role === 'staff') {
-        setSaleType('gst')
-        setNongstAuthId('') // Clear any non-GST auth ID if staff somehow had it
-      }
     }
 
     // Fetch latest daily gold rate from gold_rates table
@@ -161,9 +225,16 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
         const billItemsData = await getBillItems(editBillId)
 
         // Set bill basic info
+        let billDateStr: string | null = null
         if (billData.bill_date) {
-          setBillDate(billData.bill_date.split('T')[0])
+          // bill_date from DB may include time, keep only date part
+          billDateStr = billData.bill_date.split('T')[0]
+          setBillDate(billDateStr || billDate)
+        } else if (billData.created_at) {
+          billDateStr = billData.created_at.split('T')[0]
+          setBillDate(billDateStr || billDate)
         }
+
         if (billData.bill_no) {
           setBillNo(billData.bill_no)
         }
@@ -197,9 +268,31 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
           }
         }
 
-        // Set bill items
+        // Separate MC / VALUE ADDED item from regular items
         if (billItemsData && billItemsData.length > 0) {
-          const formattedItems: BillItem[] = billItemsData.map((item: any) => ({
+          const mcItem = billItemsData.find(
+            (item: any) =>
+              item.item_name &&
+              item.item_name.trim().toUpperCase() === 'MC / VALUE ADDED'
+          )
+
+          const regularItems = billItemsData.filter(
+            (item: any) =>
+              !item.item_name ||
+              item.item_name.trim().toUpperCase() !== 'MC / VALUE ADDED'
+          )
+
+          if (mcItem) {
+            setMcValueAdded({
+              weight: mcItem.weight || 0,
+              weightInput: (mcItem.weight || 0).toString(),
+              rate: mcItem.rate || 0,
+              rateInput: (mcItem.rate || 0).toString(),
+              total: mcItem.line_total || 0,
+            })
+          }
+
+          const formattedItems: BillItem[] = regularItems.map((item: any) => ({
             id: item.id.toString(),
             barcode: item.barcode || '',
             item_name: item.item_name || '',
@@ -233,6 +326,28 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
             hsn_code: oldGold.hsn_code || '7113',
             particulars: oldGold.notes || '',
           })
+        }
+
+        // When editing, use the gold rate that was effective on the bill date
+        if (billDateStr) {
+          try {
+            const supabaseForRate = createClient()
+            const { data: rateRow, error: rateError } = await supabaseForRate
+              .from('gold_rates')
+              .select('*')
+              .lte('effective_date', billDateStr)
+              .order('effective_date', { ascending: false })
+              .limit(1)
+              .single()
+
+            if (!rateError && rateRow) {
+              const rate = parseFloat(rateRow.rate_per_gram) || 0
+              setDailyGoldRate(rate)
+              setDailyGoldRateInput(rate.toString())
+            }
+          } catch (err) {
+            console.error('Error fetching historical gold rate for bill date:', err)
+          }
         }
 
         toast({
@@ -582,28 +697,134 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
     
       const makingCharges = parseFloat(newItem.makingChargesInput) || 0
       const lineTotal = calculateLineTotal(weight, goldRate, makingCharges)
+
       setItems([
         ...items,
         {
           id: Date.now().toString(),
           barcode: newItem.barcode || '',
-        item_name: newItem.item_name.trim(),
-          weight: weight,
+          item_name: newItem.item_name.trim(),
+          weight,
           rate: goldRate, // Store the gold rate used
           making_charges: makingCharges,
           gst_rate: 0, // No item-level GST, GST is applied at bill level
           line_total: lineTotal,
         },
       ])
-      setNewItem({ barcode: '', item_name: '', weight: 0, weightInput: '', rate: 0, making_charges: 0, makingChargesInput: '' })
-    toast({
-      title: 'Item Added',
-      description: 'Item has been added to the bill',
-    })
+      toast({
+        title: 'Item Added',
+        description: 'Item has been added to the bill',
+      })
+
+      // Reset form
+      setNewItem({
+        barcode: '',
+        item_name: '',
+        weight: 0,
+        weightInput: '',
+        rate: 0,
+        making_charges: 0,
+        makingChargesInput: '',
+      })
   }
 
   const handleRemoveItem = (id: string) => {
     setItems(items.filter(item => item.id !== id))
+    if (editingItemId === id) {
+      setEditingItemId(null)
+      setEditingItemData({
+        barcode: '',
+        item_name: '',
+        weightInput: '',
+        rateInput: '',
+        makingChargesInput: '',
+      })
+    }
+  }
+
+  const handleStartInlineItemEdit = (id: string) => {
+    const item = items.find(i => i.id === id)
+    if (!item) return
+
+    setEditingItemId(id)
+    setEditingItemData({
+      barcode: item.barcode || '',
+      item_name: item.item_name || '',
+      weightInput: (item.weight || 0).toString(),
+      rateInput: (item.rate || 0).toString(),
+      makingChargesInput: (item.making_charges || 0).toString(),
+    })
+  }
+
+  const handleCancelInlineItemEdit = () => {
+    setEditingItemId(null)
+    setEditingItemData({
+      barcode: '',
+      item_name: '',
+      weightInput: '',
+      rateInput: '',
+      makingChargesInput: '',
+    })
+  }
+
+  const handleSaveInlineItemEdit = (id: string) => {
+    const item = items.find(i => i.id === id)
+    if (!item) return
+
+    const updatedName = editingItemData.item_name.trim()
+    const weight = parseFloat(editingItemData.weightInput) || 0
+    const makingCharges = parseFloat(editingItemData.makingChargesInput) || 0
+    const customRate = parseFloat(editingItemData.rateInput) || 0
+
+    if (!updatedName) {
+      toast({
+        title: 'Item Name Required',
+        description: 'Please enter an item name',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (!weight || weight <= 0) {
+      toast({
+        title: 'Weight Required',
+        description: 'Please enter a valid weight',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (!customRate || customRate <= 0) {
+      toast({
+        title: 'Rate Required',
+        description: 'Please enter a valid rate for this item',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const lineTotal = calculateLineTotal(weight, customRate, makingCharges)
+
+    const updatedItems = items.map(i =>
+      i.id === id
+        ? {
+            ...i,
+            barcode: editingItemData.barcode || '',
+            item_name: updatedName,
+            weight,
+            rate: customRate,
+            making_charges: makingCharges,
+            line_total: lineTotal,
+          }
+        : i
+    )
+
+    setItems(updatedItems)
+    toast({
+      title: 'Item Updated',
+      description: 'Item has been updated successfully',
+    })
+    handleCancelInlineItemEdit()
   }
 
   // Rounding function for GST (whole numbers)
@@ -1281,6 +1502,164 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
+            {/* Bill Items Section (shown above Add Items, especially useful when editing) */}
+            {items.length > 0 && (
+              <Card className="border-2 border-slate-200 dark:border-slate-700 shadow-lg overflow-hidden">
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-bold text-foreground">
+                      {currentBillId ? 'Existing Bill Items' : 'Bill Items'}
+                    </h2>
+                    {currentBillId && (
+                      <span className="text-xs px-2 py-1 rounded-full bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-200 border border-blue-200 dark:border-blue-700">
+                        Edit mode
+                      </span>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+                          <th className="text-left py-4 px-4 font-semibold text-foreground">Item</th>
+                          <th className="text-left py-4 px-4 font-semibold text-foreground">Weight</th>
+                          <th className="text-left py-4 px-4 font-semibold text-foreground">Rate</th>
+                          <th className="text-left py-4 px-4 font-semibold text-foreground">Making</th>
+                          <th className="text-left py-4 px-4 font-semibold text-foreground">Total</th>
+                          <th className="text-center py-4 px-4 font-semibold text-foreground">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map(item => {
+                          const isEditingRow = editingItemId === item.id
+                          const inlineRate = isEditingRow ? parseFloat(editingItemData.rateInput) || 0 : item.rate
+                          const inlineWeight = isEditingRow ? parseFloat(editingItemData.weightInput) || 0 : item.weight
+                          const inlineMaking = isEditingRow ? parseFloat(editingItemData.makingChargesInput) || 0 : item.making_charges
+                          const inlineTotal = calculateLineTotal(inlineWeight, inlineRate, inlineMaking)
+
+                          return (
+                            <tr key={item.id} className={`border-b border-slate-200 dark:border-slate-700 ${isEditingRow ? 'bg-primary/5' : 'hover:bg-slate-50 dark:hover:bg-slate-800'} transition-colors`}>
+                              <td className="py-4 px-4 font-medium text-foreground">
+                                {isEditingRow ? (
+                                  <div className="space-y-2">
+                                    <Input
+                                      placeholder="Item Name *"
+                                      value={editingItemData.item_name}
+                                      onChange={(e) => setEditingItemData(prev => ({ ...prev, item_name: e.target.value }))}
+                                      className="h-9 text-sm"
+                                    />
+                                    <Input
+                                      placeholder="Barcode"
+                                      value={editingItemData.barcode}
+                                      onChange={(e) => setEditingItemData(prev => ({ ...prev, barcode: e.target.value }))}
+                                      className="h-9 text-xs"
+                                    />
+                                  </div>
+                                ) : (
+                                  <>
+                                    {item.item_name}
+                                    {item.barcode && (
+                                      <div className="text-xs text-muted-foreground mt-1">Barcode: {item.barcode}</div>
+                                    )}
+                                  </>
+                                )}
+                              </td>
+                              <td className="py-4 px-4 text-foreground">
+                                {isEditingRow ? (
+                                  <Input
+                                    type="text"
+                                    value={editingItemData.weightInput}
+                                    onChange={(e) => {
+                                      const val = e.target.value
+                                      if (val === '' || /^-?\d*\.?\d*$/.test(val)) {
+                                        setEditingItemData(prev => ({ ...prev, weightInput: val }))
+                                      }
+                                    }}
+                                    className="h-9 text-sm"
+                                  />
+                                ) : (
+                                  `${item.weight}g`
+                                )}
+                              </td>
+                              <td className="py-4 px-4 text-foreground">
+                                {isEditingRow ? (
+                                  <Input
+                                    type="text"
+                                    value={editingItemData.rateInput}
+                                    onChange={(e) => {
+                                      const val = e.target.value
+                                      if (val === '' || /^-?\d*\.?\d*$/.test(val)) {
+                                        setEditingItemData(prev => ({ ...prev, rateInput: val }))
+                                      }
+                                    }}
+                                    className="h-9 text-sm"
+                                  />
+                                ) : (
+                                  `₹${item.rate.toFixed(2)}`
+                                )}
+                              </td>
+                              <td className="py-4 px-4 text-foreground">
+                                {isEditingRow ? (
+                                  <Input
+                                    type="text"
+                                    value={editingItemData.makingChargesInput}
+                                    onChange={(e) => {
+                                      const val = e.target.value
+                                      if (val === '' || /^-?\d*\.?\d*$/.test(val)) {
+                                        setEditingItemData(prev => ({ ...prev, makingChargesInput: val }))
+                                      }
+                                    }}
+                                    className="h-9 text-sm"
+                                  />
+                                ) : (
+                                  `₹${item.making_charges.toFixed(2)}`
+                                )}
+                              </td>
+                              <td className="py-4 px-4 font-bold text-primary text-lg">
+                                {isEditingRow ? `₹${inlineTotal.toFixed(2)}` : `₹${item.line_total.toFixed(2)}`}
+                              </td>
+                              <td className="py-4 px-4 text-center">
+                                {isEditingRow ? (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button
+                                      onClick={() => handleSaveInlineItemEdit(item.id)}
+                                      className="text-primary hover:text-primary/80 font-semibold px-3 py-1 rounded hover:bg-primary/10 transition-colors text-sm"
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      onClick={handleCancelInlineItemEdit}
+                                      className="text-muted-foreground hover:text-foreground font-medium px-3 py-1 rounded hover:bg-muted transition-colors text-sm"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button
+                                      onClick={() => handleStartInlineItemEdit(item.id)}
+                                      className="text-primary hover:text-primary/80 font-medium px-3 py-1 rounded hover:bg-primary/10 transition-colors text-sm"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button 
+                                      onClick={() => handleRemoveItem(item.id)} 
+                                      className="text-destructive hover:text-destructive/80 font-medium px-3 py-1 rounded hover:bg-destructive/10 transition-colors text-sm"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </Card>
+            )}
+
             {/* Add Items Section */}
             <Card className="border-2 border-slate-200 dark:border-slate-700 shadow-lg">
               <div className="p-6">
@@ -1358,7 +1737,7 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
                 <Button
                   onClick={handleAddItem}
                   className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-semibold text-lg"
-                            >
+                >
                   + Add Item to Bill
                 </Button>
               </div>
@@ -1737,6 +2116,21 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
 
           {/* Actions */}
             <div className="space-y-3">
+              {currentBillId && (
+                <Button
+                  className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md"
+                  onClick={async () => {
+                  const saved = await handleSaveBill()
+                  if (!saved) return
+                  toast({
+                    title: 'Bill Updated',
+                    description: 'Changes saved successfully (no print triggered).',
+                  })
+                  }}
+                >
+                  💾 Save Bill Changes (No Print)
+                </Button>
+              )}
               <Button 
                 className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-semibold text-lg shadow-lg"
                 onClick={async () => {
@@ -1753,6 +2147,7 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
                     // Hide invoice after printing
                     setTimeout(() => {
                       setShowInvoice(false)
+                      resetBillForm()
                     }, 500)
                   }, 300)
                 }}
@@ -1776,48 +2171,6 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
                 </Button>
               )}
             </div>
-
-            {/* Items Table - Below Save and Print Bill */}
-            {items.length > 0 && (
-              <Card className="border-2 border-slate-200 dark:border-slate-700 shadow-lg overflow-hidden">
-                <div className="p-6">
-                  <h2 className="text-xl font-bold mb-4 text-foreground">Bill Items</h2>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-                          <th className="text-left py-4 px-4 font-semibold text-foreground">Item</th>
-                          <th className="text-left py-4 px-4 font-semibold text-foreground">Weight</th>
-                          <th className="text-left py-4 px-4 font-semibold text-foreground">Rate</th>
-                          <th className="text-left py-4 px-4 font-semibold text-foreground">Making</th>
-                          <th className="text-left py-4 px-4 font-semibold text-foreground">Total</th>
-                          <th className="text-center py-4 px-4 font-semibold text-foreground">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map(item => (
-                          <tr key={item.id} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                            <td className="py-4 px-4 font-medium text-foreground">{item.item_name}</td>
-                            <td className="py-4 px-4 text-foreground">{item.weight}g</td>
-                            <td className="py-4 px-4 text-foreground">₹{item.rate.toFixed(2)}</td>
-                            <td className="py-4 px-4 text-foreground">₹{item.making_charges.toFixed(2)}</td>
-                            <td className="py-4 px-4 font-bold text-primary text-lg">₹{item.line_total.toFixed(2)}</td>
-                            <td className="py-4 px-4 text-center">
-                              <button 
-                                onClick={() => handleRemoveItem(item.id)} 
-                                className="text-destructive hover:text-destructive/80 font-medium px-3 py-1 rounded hover:bg-destructive/10 transition-colors"
-                              >
-                                Remove
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </Card>
-            )}
           </div>
         </div>
       </div>

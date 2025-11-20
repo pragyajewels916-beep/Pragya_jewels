@@ -66,10 +66,10 @@ export function Inventory() {
   }, [])
 
   const handleAddItem = async () => {
-    if (!newItem.item_name || !newItem.barcode) {
+    if (!newItem.barcode || !newItem.item_name || !newItem.category || !newItem.weight) {
       toast({
         title: 'Required Fields',
-        description: 'Item name and barcode are required',
+        description: 'Barcode, Item Name, Category and Weight are required',
         variant: 'destructive',
       })
       return
@@ -261,11 +261,10 @@ export function Inventory() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-semibold text-foreground">
-                Purity (e.g., 22K, 18K) <span className="text-destructive">*</span>
+                Purity (e.g., 22K, 18K)
               </label>
               <Input
                 placeholder="Purity"
-                required
                 value={newItem.purity || ''}
                 onChange={(e) => setNewItem({ ...newItem, purity: e.target.value })}
               />
@@ -308,13 +307,12 @@ export function Inventory() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-semibold text-foreground">
-                Price per gram <span className="text-destructive">*</span>
+                Price per gram
               </label>
               <Input
                 type="number"
                 placeholder="Rate per gram"
                 step="0.01"
-                required
                 value={newItem.price_per_gram || ''}
                 onChange={(e) => setNewItem({ ...newItem, price_per_gram: parseFloat(e.target.value) || 0 })}
               />
@@ -331,11 +329,10 @@ export function Inventory() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-semibold text-foreground">
-                Stock Status <span className="text-destructive">*</span>
+                Stock Status
               </label>
               <select
                 value={newItem.stock_status || 'in_stock'}
-                required
                 onChange={(e) =>
                   setNewItem({
                     ...newItem,
@@ -352,11 +349,10 @@ export function Inventory() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-semibold text-foreground">
-                Location <span className="text-destructive">*</span>
+                Location
               </label>
               <Input
                 placeholder="Store location / tray"
-                required
                 value={newItem.location || ''}
                 onChange={(e) => setNewItem({ ...newItem, location: e.target.value })}
               />

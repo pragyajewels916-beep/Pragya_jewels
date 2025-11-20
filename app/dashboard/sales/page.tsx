@@ -107,7 +107,8 @@ export default function SalesPage() {
         .select(`
           *,
           customers(*),
-          users(id, username, role)
+          users(id, username, role),
+          bill_items(*)
         `)
         .order('created_at', { ascending: false })
 
@@ -710,7 +711,7 @@ export default function SalesPage() {
                       <th className="text-left py-4 px-4 font-semibold text-foreground">Type</th>
                       <th className="text-left py-4 px-4 font-semibold text-foreground">Subtotal</th>
                       <th className="text-left py-4 px-4 font-semibold text-foreground">GST</th>
-                      <th className="text-left py-4 px-4 font-semibold text-foreground">Discount</th>
+                      <th className="text-left py-4 px-4 font-semibold text-foreground">MC / Value Add</th>
                       <th className="text-left py-4 px-4 font-semibold text-foreground">Grand Total</th>
                       <th className="text-left py-4 px-4 font-semibold text-foreground">Status</th>
                       <th className="text-left py-4 px-4 font-semibold text-foreground">Staff</th>
@@ -723,6 +724,9 @@ export default function SalesPage() {
                     {paginatedBills.map((bill) => {
                       const isExpanded = expandedRows.has(bill.id)
                       const billItemsForRow = billItems.filter(item => item.bill_id === bill.id)
+                      const mcValue = (bill.bill_items || [])
+                        .filter(item => item.item_name?.trim().toUpperCase() === 'MC / VALUE ADDED')
+                        .reduce((sum, item) => sum + (item.line_total || 0), 0)
                       
                       return (
                         <React.Fragment key={bill.id}>
@@ -766,7 +770,7 @@ export default function SalesPage() {
                             </td>
                             <td className="py-4 px-4 text-foreground">{formatCurrency(bill.subtotal)}</td>
                             <td className="py-4 px-4 text-foreground">{formatCurrency(bill.gst_amount || bill.cgst || 0)}</td>
-                            <td className="py-4 px-4 text-foreground">{formatCurrency(bill.discount)}</td>
+                            <td className="py-4 px-4 text-foreground">{formatCurrency(mcValue)}</td>
                             <td className="py-4 px-4 font-bold text-primary text-lg">
                               {formatCurrency(bill.grand_total || bill.subtotal)}
                             </td>
