@@ -79,6 +79,7 @@ export interface BillItem {
   making_charges?: number
   gst_rate?: number
   line_total?: number
+  metal_type?: string
 }
 
 export interface GoldRate {
@@ -247,6 +248,7 @@ export async function getCustomerById(id: number) {
 }
 
 export async function createCustomer(customer: Omit<Customer, 'id' | 'customer_code' | 'created_at'>) {
+  console.log('Creating customer with data:', customer)
   const supabase = createClient()
   const { data, error } = await supabase
     .from('customers')
@@ -254,7 +256,11 @@ export async function createCustomer(customer: Omit<Customer, 'id' | 'customer_c
     .select()
     .single()
   
-  if (error) throw error
+  if (error) {
+    console.error('Error creating customer:', error)
+    throw error
+  }
+  console.log('Customer created successfully:', data)
   return data as Customer
 }
 
@@ -281,6 +287,23 @@ export async function deleteCustomer(id: number) {
   if (error) throw error
 }
 
+export async function getCustomersByPhone(phone: string) {
+  console.log('Searching for customers with phone:', phone)
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('customers')
+    .select('*')
+    .ilike('phone', `%${phone}%`)
+    .limit(10)
+  
+  if (error) {
+    console.error('Error searching customers by phone:', error)
+    throw error
+  }
+  console.log('Customer search results:', data)
+  return data as Customer[]
+}
+
 // Item/Inventory queries
 export async function getItems() {
   const supabase = createClient()
@@ -294,6 +317,7 @@ export async function getItems() {
 }
 
 export async function getItemByBarcode(barcode: string) {
+  console.log('Searching for item with barcode:', barcode)
   const supabase = createClient()
   const { data, error } = await supabase
     .from('items')
@@ -301,7 +325,11 @@ export async function getItemByBarcode(barcode: string) {
     .eq('barcode', barcode)
     .single()
   
-  if (error) throw error
+  if (error) {
+    console.error('Error searching item by barcode:', error)
+    throw error
+  }
+  console.log('Item found:', data)
   return data as Item
 }
 
@@ -365,6 +393,7 @@ export async function getBillById(id: number) {
 }
 
 export async function createBill(bill: Omit<Bill, 'id' | 'bill_no' | 'created_at' | 'updated_at'>) {
+  console.log('Creating bill with data:', bill)
   const supabase = createClient()
   const { data, error } = await supabase
     .from('bills')
@@ -372,11 +401,22 @@ export async function createBill(bill: Omit<Bill, 'id' | 'bill_no' | 'created_at
     .select()
     .single()
   
-  if (error) throw error
+  if (error) {
+    console.error('Error creating bill:', error)
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    })
+    throw error
+  }
+  console.log('Bill created successfully:', data)
   return data as Bill
 }
 
 export async function updateBill(id: number, updates: Partial<Bill>) {
+  console.log('Updating bill ID:', id, 'with updates:', updates)
   const supabase = createClient()
   const supabaseUpdates = { ...updates, updated_at: new Date().toISOString() }
   const { data, error } = await supabase
@@ -386,7 +426,11 @@ export async function updateBill(id: number, updates: Partial<Bill>) {
     .select()
     .single()
   
-  if (error) throw error
+  if (error) {
+    console.error('Error updating bill:', error)
+    throw error
+  }
+  console.log('Bill updated successfully:', data)
   return data as Bill
 }
 
@@ -412,14 +456,58 @@ export async function getBillItems(billId: number) {
 }
 
 export async function createBillItems(billId: number, items: Omit<BillItem, 'id' | 'bill_id'>[]) {
+  console.log('Creating bill items for bill ID:', billId, 'with items:', items)
+  
+  if (!items || items.length === 0) {
+    console.log('No bill items to create')
+    return []
+  }
+  
   const supabase = createClient()
-  const billItems = items.map(item => ({ ...item, bill_id: billId }))
+  
+  // Only include fields that are definitely in the base schema to avoid schema cache issues
+  const billItems = items.map(item => {
+    const basicItem: any = {
+      bill_id: billId,
+      item_name: item.item_name,
+      weight: item.weight,
+      rate: item.rate,
+      making_charges: item.making_charges,
+      gst_rate: item.gst_rate,
+      line_total: item.line_total,
+    };
+    
+    // Only add optional fields if they have values to avoid schema cache issues
+    if (item.barcode !== undefined && item.barcode !== null) {
+      basicItem.barcode = item.barcode;
+    }
+    
+    if (item.metal_type !== undefined && item.metal_type !== null) {
+      basicItem.metal_type = item.metal_type;
+    }
+    
+    return basicItem;
+  });
+  
+  console.log('Final bill items to insert:', billItems)
+  
   const { data, error } = await supabase
     .from('bill_items')
     .insert(billItems)
     .select()
   
-  if (error) throw error
+  if (error) {
+    console.error('Error creating bill items:', error)
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    })
+    throw error
+  }
+  
+  console.log('Bill items created successfully:', data)
   return data as BillItem[]
 }
 
@@ -537,3 +625,186 @@ export async function updateGoldRate(id: number, updates: Partial<GoldRate>) {
   return data as GoldRate
 }
 
+// Advance Booking queries
+export interface AdvanceBooking {
+  id: number
+  bill_id: number
+  booking_date: string
+  delivery_date: string
+  advance_amount: number
+  total_amount: number
+  remaining_amount?: number
+  item_description: string
+  customer_notes: string
+  booking_status: 'active' | 'delivered' | 'cancelled' | 'completed'
+  created_at: string
+  updated_at: string
+}
+
+export async function getAdvanceBookings() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('advance_bookings')
+    .select('*')
+    .order('booking_date', { ascending: false })
+
+  if (error) throw error
+  return data as AdvanceBooking[]
+}
+
+export async function getAdvanceBookingById(id: number) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('advance_bookings')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error) throw error
+  return data as AdvanceBooking
+}
+
+export async function createAdvanceBooking(booking: Omit<AdvanceBooking, 'id' | 'created_at' | 'updated_at' | 'remaining_amount'>) {
+  console.log('Creating advance booking with data:', booking)
+  const supabase = createClient()
+  
+  // Don't include remaining_amount in insert as it might be a computed column
+  const { data, error } = await supabase
+    .from('advance_bookings')
+    .insert(booking)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error creating advance booking:', error)
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    })
+    throw error
+  }
+  console.log('Advance booking created successfully:', data)
+  return data as AdvanceBooking
+}
+
+export async function updateAdvanceBooking(id: number, updates: Partial<AdvanceBooking>) {
+  console.log('Updating advance booking ID:', id, 'with updates:', updates)
+  const supabase = createClient()
+  
+  // Remove remaining_amount from updates if present as it might be a computed column
+  const updatesWithoutRemaining = { ...updates }
+  if ('remaining_amount' in updatesWithoutRemaining) {
+    delete updatesWithoutRemaining.remaining_amount
+  }
+  
+  console.log('Updating advance booking with calculated remaining amount:', updatesWithoutRemaining)
+  
+  const { data, error } = await supabase
+    .from('advance_bookings')
+    .update(updatesWithoutRemaining)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error updating advance booking:', error)
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    })
+    throw error
+  }
+  console.log('Advance booking updated successfully:', data)
+  return data as AdvanceBooking
+}
+
+export async function deleteAdvanceBooking(id: number) {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('advance_bookings')
+    .delete()
+    .eq('id', id)
+  
+  if (error) throw error
+}
+
+// Layaway Transaction queries
+export interface LayawayTransaction {
+  id: number
+  bill_id: number
+  payment_date: string
+  amount: number
+  payment_method: string
+  reference_number: string
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export async function getLayawayTransactions(billId?: number) {
+  const supabase = createClient()
+  let query = supabase
+    .from('layaway_transactions')
+    .select('*')
+    .order('payment_date', { ascending: false })
+
+  if (billId) {
+    query = query.eq('bill_id', billId)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+  return data as LayawayTransaction[]
+}
+
+export async function getLayawayTransactionById(id: number) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('layaway_transactions')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error) throw error
+  return data as LayawayTransaction
+}
+
+export async function createLayawayTransaction(transaction: Omit<LayawayTransaction, 'id' | 'created_at' | 'updated_at'>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('layaway_transactions')
+    .insert(transaction)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as LayawayTransaction
+}
+
+export async function updateLayawayTransaction(id: number, updates: Partial<LayawayTransaction>) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('layaway_transactions')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as LayawayTransaction
+}
+
+export async function deleteLayawayTransaction(id: number) {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('layaway_transactions')
+    .delete()
+    .eq('id', id)
+  
+  if (error) throw error
+}

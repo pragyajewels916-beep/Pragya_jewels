@@ -168,7 +168,7 @@ export function Returns() {
 
   const filteredReturns = returns.filter(r => filterStatus === 'all' || r.status === filterStatus)
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status?: string) => {
     switch (status) {
       case 'pending':
         return 'bg-yellow-100 text-yellow-700'
@@ -302,7 +302,7 @@ export function Returns() {
                     <p className="text-muted-foreground">{selectedReturn.created_at}</p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(selectedReturn.status)}`}>
-                    {selectedReturn.status.toUpperCase()}
+                    {selectedReturn.status?.toUpperCase() || 'UNKNOWN'}
                   </span>
                 </div>
 

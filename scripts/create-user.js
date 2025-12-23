@@ -41,3 +41,4 @@ console.log('Copy the SQL above and run it in Supabase SQL Editor\n');
 
 
 
+

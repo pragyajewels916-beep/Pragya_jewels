@@ -142,6 +142,11 @@ All functions are in `lib/db/queries.ts`:
 - `getReturns()`
 - `createReturn(returnData)`
 
+### Categories
+- `getCategories()`
+- `searchCategories(term)`
+- `getCategoryByName(name)`
+
 ## Troubleshooting
 
 ### "Module not found" errors
@@ -163,6 +168,7 @@ All functions are in `lib/db/queries.ts`:
 - All sensitive operations should go through API routes
 - Client-side queries use `createClient()` from `lib/supabase/client.ts`
 - Server-side queries use `createClient()` from `lib/supabase/server.ts`
+
 
 
 

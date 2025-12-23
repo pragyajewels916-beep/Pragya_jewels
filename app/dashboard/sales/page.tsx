@@ -20,6 +20,7 @@ interface BillWithRelations extends Bill {
     role: string
   } | null
   bill_items?: BillItem[]
+  tracking_flag?: boolean
 }
 
 export default function SalesPage() {
@@ -742,7 +743,14 @@ export default function SalesPage() {
                               </button>
                             </td>
                             <td className="py-4 px-4 font-medium text-foreground cursor-pointer hover:text-primary" onClick={() => handleViewDetails(bill)}>
-                              {bill.bill_no || `#${bill.id}`}
+                              <div className="flex items-center gap-2">
+                                <span>{bill.bill_no || `#${bill.id}`}</span>
+                                {bill.tracking_flag && (
+                                  <span className="px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" title="Layaway: Final payment ≥ 3 days after advance">
+                                    📅 Layaway
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="py-4 px-4 text-foreground">{formatDate(bill.bill_date || bill.created_at)}</td>
                             <td className="py-4 px-4 text-foreground">

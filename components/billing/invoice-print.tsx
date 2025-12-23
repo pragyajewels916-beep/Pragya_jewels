@@ -11,6 +11,10 @@ interface BillItem {
   making_charges: number
   gst_rate: number
   line_total: number
+  purity?: string
+  hsn_code?: string
+  sl_no?: number
+  metal_type?: string
 }
 
 interface InvoicePrintProps {
@@ -45,6 +49,16 @@ interface InvoicePrintProps {
     amount: string
     reference: string
   }>
+  // Layaway props
+  isLayaway?: boolean
+  layawayData?: {
+    advancePaymentDate: string
+    itemTakenDate: string
+    finalPaymentDate: string
+    advanceAmount: number
+    remainingAmount: number
+    trackingFlag: boolean
+  }
 }
 
 export function InvoicePrint({
@@ -65,6 +79,8 @@ export function InvoicePrint({
   sgst,
   igst,
   paymentMethods,
+  isLayaway,
+  layawayData
 }: InvoicePrintProps) {
   // Format date from YYYY-MM-DD to DD-MM-YYYY
   const formatDate = (dateStr: string) => {
@@ -276,20 +292,20 @@ export function InvoicePrint({
         .invoice-items table {
           width: 100%;
           border-collapse: collapse;
-          font-size: 16px;
+          font-size: 12px;
           page-break-inside: avoid;
           border: 1px solid #ddd;
         }
 
         .invoice-items th,
         .invoice-items td {
-          padding: 14px 12px;
-          line-height: 1.6;
+          padding: 8px 6px;
+          line-height: 1.4;
           border: 1px solid #ddd;
         }
 
         .invoice-items th {
-          font-size: 15px;
+          font-size: 12px;
           background: #f5f5f5;
           color: #222;
           border-bottom: 2px solid #ddd;
@@ -419,24 +435,24 @@ export function InvoicePrint({
 
           <div className="invoice-info">
             <div className="left-section">
-              {billNo && (
+            {billNo && (
+              <div className="block">
+                <div className="label">BILL NO:-</div>
+                <div className="value">{billNo}</div>
+              </div>
+            )}
+          {customer && (
+                <>
+              <div className="block">
+                <div className="label">CUSTOMER:-</div>
+                <div className="value">{customer.name || 'N/A'}</div>
+              </div>
+              {customer.phone && (
                 <div className="block">
-                  <div className="label">BILL NO:-</div>
-                  <div className="value">{billNo}</div>
+                  <div className="label">PHONE:-</div>
+                  <div className="value">{customer.phone}</div>
                 </div>
               )}
-              {customer && (
-                <>
-                  <div className="block">
-                    <div className="label">CUSTOMER:-</div>
-                    <div className="value">{customer.name || 'N/A'}</div>
-                  </div>
-                  {customer.phone && (
-                    <div className="block">
-                      <div className="label">PHONE:-</div>
-                      <div className="value">{customer.phone}</div>
-                    </div>
-                  )}
                 </>
               )}
             </div>
@@ -456,17 +472,25 @@ export function InvoicePrint({
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: '30%', textAlign: 'left', paddingLeft: '12px' }}>ITEM</th>
-                  <th style={{ width: '15%' }}>WEIGHT</th>
-                  <th style={{ width: '15%' }}>RATE</th>
-                  <th style={{ width: '15%' }}>MAKING</th>
-                  <th style={{ width: '25%' }}>TOTAL</th>
+                  <th style={{ width: '5%' }}>SL NO</th>
+                  <th style={{ width: '20%', textAlign: 'left', paddingLeft: '12px' }}>ITEM</th>
+                  <th style={{ width: '8%' }}>PURITY</th>
+                  <th style={{ width: '8%' }}>METAL</th>
+                  <th style={{ width: '8%' }}>HSN</th>
+                  <th style={{ width: '10%' }}>WEIGHT</th>
+                  <th style={{ width: '10%' }}>RATE</th>
+                  <th style={{ width: '10%' }}>MAKING</th>
+                  <th style={{ width: '21%' }}>TOTAL</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item, index) => (
                   <tr key={item.id || index}>
+                    <td>{item.sl_no || index + 1}</td>
                     <td className="item">{item.item_name || 'Item'}</td>
+                    <td>{item.purity || '-'}</td>
+                    <td>{item.metal_type?.toUpperCase() || 'GOLD'}</td>
+                    <td>{item.hsn_code || '711319'}</td>
                     <td>{item.weight.toFixed(2)}g</td>
                     <td>₹{item.rate.toFixed(2)}</td>
                     <td>₹{(item.making_charges || 0).toFixed(2)}</td>
@@ -474,11 +498,9 @@ export function InvoicePrint({
                   </tr>
                 ))}
                 {mcValueAdded.total > 0 && (
-                  <tr style={{ borderTop: '2px solid #ddd' }}>
-                    <td className="item" style={{ fontWeight: 700, textDecoration: 'underline' }}>
-                      MC / VALUE ADDED
-                    </td>
-                    <td colSpan={3} style={{ textAlign: 'center' }}>-</td>
+                  <tr>
+                    <td colSpan={7}></td>
+                    <td className="item" style={{ fontWeight: 700, textDecoration: 'underline' }}>MC / VALUE ADDED</td>
                     <td style={{ fontWeight: 700 }}>₹{mcValueAdded.total.toFixed(2)}</td>
                   </tr>
                 )}
@@ -486,25 +508,22 @@ export function InvoicePrint({
                   <>
                     {cgst > 0 && (
                       <tr>
-                        <td className="item" colSpan={4} style={{ textAlign: 'center', paddingRight: '12px' }}>
-                          CGST (1.5%)
-                        </td>
+                        <td colSpan={7}></td>
+                        <td className="item">CGST (1.5%)</td>
                         <td style={{ fontWeight: 600 }}>₹{cgst.toFixed(2)}</td>
                       </tr>
                     )}
                     {sgst > 0 && (
                       <tr>
-                        <td className="item" colSpan={4} style={{ textAlign: 'center', paddingRight: '12px' }}>
-                          SGST (1.5%)
-                        </td>
+                        <td colSpan={7}></td>
+                        <td className="item">SGST (1.5%)</td>
                         <td style={{ fontWeight: 600 }}>₹{sgst.toFixed(2)}</td>
                       </tr>
                     )}
                     {igst > 0 && (
                       <tr>
-                        <td className="item" colSpan={4} style={{ textAlign: 'center', paddingRight: '12px' }}>
-                          IGST
-                        </td>
+                        <td colSpan={7}></td>
+                        <td className="item">IGST</td>
                         <td style={{ fontWeight: 600 }}>₹{igst.toFixed(2)}</td>
                       </tr>
                     )}
@@ -512,25 +531,22 @@ export function InvoicePrint({
                 )}
                 {discount > 0 && (
                   <tr>
-                    <td className="item" colSpan={4} style={{ textAlign: 'center', paddingRight: '12px' }}>
-                      DISCOUNT
-                    </td>
+                    <td colSpan={7}></td>
+                    <td className="item">DISCOUNT</td>
                     <td style={{ color: '#c0392b', fontWeight: 600 }}>-₹{discount.toFixed(2)}</td>
                   </tr>
                 )}
                 {oldGoldExchange.total > 0 && (
                   <tr>
-                    <td className="item" colSpan={4} style={{ textAlign: 'center', paddingRight: '12px' }}>
-                      OLD GOLD CREDIT
-                    </td>
+                    <td colSpan={7}></td>
+                    <td className="item">OLD GOLD CREDIT</td>
                     <td style={{ color: '#c0392b', fontWeight: 600 }}>-₹{oldGoldExchange.total.toFixed(2)}</td>
                   </tr>
                 )}
                 <tr style={{ borderTop: '2px solid #222' }}>
-                  <td className="item" colSpan={4} style={{ textAlign: 'center', paddingRight: '12px', fontWeight: 700, fontSize: '18px' }}>
-                    TOTAL
-                  </td>
-                  <td style={{ fontWeight: 800, fontSize: '20px', color: '#c0392b' }}>
+                  <td colSpan={7}></td>
+                  <td className="item" style={{ fontWeight: 700, fontSize: '14px' }}>TOTAL</td>
+                  <td style={{ fontWeight: 800, fontSize: '16px', color: '#c0392b' }}>
                     ₹{amountPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                 </tr>
@@ -546,23 +562,23 @@ export function InvoicePrint({
                 <div className="label">PAYMENT MODE</div>
                 {paymentMethods && paymentMethods.length > 0 ? (
                   <>
-                    {paymentMethods.map((payment, index) => {
-                      const amount = parseFloat(payment.amount) || 0
-                      const typeLabel = payment.type === 'cash' ? 'Cash' :
-                        payment.type === 'card' ? 'Card' :
-                        payment.type === 'upi' ? 'UPI' :
-                        payment.type === 'cheque' ? 'Cheque' :
-                        payment.type === 'bank_transfer' ? 'Bank Transfer' : 'Other'
-                      return (
+                {paymentMethods.map((payment, index) => {
+                  const amount = parseFloat(payment.amount) || 0
+                  const typeLabel = payment.type === 'cash' ? 'Cash' :
+                    payment.type === 'card' ? 'Card' :
+                    payment.type === 'upi' ? 'UPI' :
+                    payment.type === 'cheque' ? 'Cheque' :
+                    payment.type === 'bank_transfer' ? 'Bank Transfer' : 'Other'
+                  return (
                         <div key={payment.id || index} className="payment-item">
-                          {typeLabel}: ₹{amount.toFixed(2)}
-                          {payment.reference && ` (Ref: ${payment.reference})`}
-                        </div>
-                      )
-                    })}
-                    <div className="payment-item" style={{ fontWeight: 700, marginTop: '4px' }}>
-                      Total: ₹{paymentMethods.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0).toFixed(2)}
+                        {typeLabel}: ₹{amount.toFixed(2)}
+                        {payment.reference && ` (Ref: ${payment.reference})`}
                     </div>
+                  )
+                })}
+                    <div className="payment-item" style={{ fontWeight: 700, marginTop: '4px' }}>
+                  Total: ₹{paymentMethods.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0).toFixed(2)}
+                </div>
                   </>
                 ) : (
                   <>
@@ -572,16 +588,47 @@ export function InvoicePrint({
                   </>
                 )}
               </div>
+              
+              {/* Layaway Information */}
+              {isLayaway && layawayData && (
+                <div style={{ marginTop: '20px', padding: '12px', backgroundColor: '#e3f2fd', borderRadius: '8px', border: '1px solid #bbdefb' }}>
+                  <p className="invoice-small-header" style={{ textAlign: 'center', marginBottom: '8px' }}>LAYAWAY / ADVANCE BOOKING</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '14px' }}>
+                    <div><strong>Advance Payment Date:</strong></div>
+                    <div>{formatDate(layawayData.advancePaymentDate)}</div>
+                    
+                    <div><strong>Item Taken Date:</strong></div>
+                    <div>{formatDate(layawayData.itemTakenDate)}</div>
+                    
+                    <div><strong>Final Payment Date:</strong></div>
+                    <div>{formatDate(layawayData.finalPaymentDate)}</div>
+                    
+                    <div><strong>Advance Amount:</strong></div>
+                    <div>₹{layawayData.advanceAmount.toFixed(2)}</div>
+                    
+                    <div><strong>Remaining Amount:</strong></div>
+                    <div>₹{layawayData.remainingAmount.toFixed(2)}</div>
+                    
+                    <div><strong>Tracking Status:</strong></div>
+                    <div>{layawayData.trackingFlag ? 'Required (≥ 3 days)' : 'Not Required (< 3 days)'}</div>
+                  </div>
+                  <p style={{ marginTop: '8px', fontSize: '13px', fontStyle: 'italic', textAlign: 'center' }}>
+                    Gold taken on {formatDate(layawayData.itemTakenDate)}, advance of ₹{layawayData.advanceAmount.toFixed(2)} paid. 
+                    Balance settled on {formatDate(layawayData.finalPaymentDate)}.
+                  </p>
+            </div>
+          )}
+
               <div style={{ marginTop: '12px' }}>
-                <p className="invoice-small-header">NO EXCHANGE</p>
-                <p className="invoice-small-header">NO BREAKAGE GUARANTEE</p>
-                <p className="invoice-small-header">RETURN 5% LESS IN CASH</p>
-              </div>
+              <p className="invoice-small-header">NO EXCHANGE</p>
+              <p className="invoice-small-header">NO BREAKAGE GUARANTEE</p>
+              <p className="invoice-small-header">RETURN 5% LESS IN CASH</p>
+            </div>
             </div>
             <div className="right">
               <div className="invoice-signature" style={{ marginTop: '20px' }}>
-                <div style={{ fontSize: '10px', color: '#6b6b6b', lineHeight: '1.2' }}>FOR</div>
-                <div style={{ fontWeight: 700, marginTop: '4px', fontSize: '13px', lineHeight: '1.2' }}>PRAGYA JEWELS</div>
+              <div style={{ fontSize: '10px', color: '#6b6b6b', lineHeight: '1.2' }}>FOR</div>
+              <div style={{ fontWeight: 700, marginTop: '4px', fontSize: '13px', lineHeight: '1.2' }}>PRAGYA JEWELS</div>
                 <div style={{ marginTop: '40px', fontSize: '14px', fontWeight: 600 }}>Authorized Signature</div>
               </div>
             </div>

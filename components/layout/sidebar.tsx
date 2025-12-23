@@ -23,6 +23,8 @@ const staffMenuItems = [
 const adminMenuItems = [
   { href: '/dashboard/sales-billing', label: 'Sales Bill', icon: '💰' },
   { href: '/dashboard/sales', label: 'All Sales', icon: '📋' },
+  { href: '/dashboard/layaway', label: 'Layaway', icon: '⏳' },
+  { href: '/dashboard/advance-booking', label: 'Advance Booking', icon: '📅' },
   { href: '/dashboard/inventory', label: 'Inventory', icon: '📦' },
   { href: '/dashboard/customers', label: 'Customers', icon: '👤' },
   { href: '/dashboard/gold-exchange', label: 'Gold Exchange', icon: '🪙' },
@@ -33,8 +35,8 @@ const adminMenuItems = [
   // { href: '/dashboard/non-gst-auth', label: 'Non-GST Auth', icon: '🚫' },
   // { href: '/dashboard/reports', label: 'Reports', icon: '📈' },
   // { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
+  // { href: '/dashboard/payment-tracking', label: 'Payment Tracking', icon: '📊' },
 ]
-
 export function Sidebar({ role, onLogout }: SidebarProps) {
   const pathname = usePathname()
   const menuItems = role === 'admin' ? adminMenuItems : staffMenuItems

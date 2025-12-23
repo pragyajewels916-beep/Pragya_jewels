@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,16 +8,18 @@ import { getItems, createItem, updateItem, deleteItem, type Item } from '@/lib/d
 import { toast } from '@/components/ui/use-toast'
 
 const categoryOptions = [
-  'Necklaces',
-  'Earrings',
-  'Bracelets',
   'Rings',
-  'Anklets',
-  'Brooches & Pins',
-  'Pendants & Charms',
-  'Cufflinks',
-  'Body Jewelry',
-  'Watches',
+  'Tops / Kammal',
+  'Chain',
+  'Bracelets',
+  'Bangle',
+  'Necklace',
+  'Hār',
+  'Dollar (Pendant)',
+  'Māng Tikkā',
+  'Bay Ring',
+  'Tali',
+  'Others'
 ]
 
 export function Inventory() {
@@ -46,23 +48,23 @@ export function Inventory() {
 
   // Fetch items from Supabase
   useEffect(() => {
-    const fetchItems = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true)
-        const data = await getItems()
-        setItems(data)
+        const itemsData = await getItems()
+        setItems(itemsData)
       } catch (error) {
-        console.error('Error fetching items:', error)
+        console.error('Error fetching data:', error)
         toast({
           title: 'Error',
-          description: 'Failed to load items. Please check console.',
+          description: 'Failed to load data. Please check console.',
           variant: 'destructive',
         })
       } finally {
         setLoading(false)
       }
     }
-    fetchItems()
+    fetchData()
   }, [])
 
   const handleAddItem = async () => {
@@ -232,16 +234,24 @@ export function Inventory() {
               </label>
               <select
                 value={newItem.category || ''}
-                required
                 onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
-                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-foreground"
+                required
+                className="w-full h-10 px-3 py-2 pr-10 border border-border rounded-lg bg-background text-foreground cursor-pointer"
+                style={{
+                  appearance: 'menulist',
+                  WebkitAppearance: 'menulist',
+                  MozAppearance: 'menulist',
+                  backgroundImage: "url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23000\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpolyline points=\'6 9 12 15 18 9\'%3E%3C/polyline%3E%3C/svg%3E')",
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 8px center',
+                  backgroundSize: '16px 16px',
+                  paddingRight: '2.5rem'
+                }}
               >
-                <option value="" disabled>
-                  Select category
-                </option>
-                {categoryOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
+                <option value="">Select category</option>
+                {categoryOptions.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
                   </option>
                 ))}
               </select>
@@ -418,7 +428,7 @@ export function Inventory() {
                 <td className="py-3 px-4 text-foreground">{item.category}</td>
                 <td className="py-3 px-4 text-foreground">{item.purity}</td>
                 <td className="py-3 px-4 text-foreground">{item.weight}g</td>
-                <td className="py-3 px-4 text-foreground">₹{item.price_per_gram.toFixed(0)}</td>
+                <td className="py-3 px-4 text-foreground">₹{item.price_per_gram?.toFixed(0) || '0'}</td>
                 <td className="py-3 px-4 text-foreground">{item.location}</td>
                 <td className="py-3 px-4 text-center">
                   <div className="flex gap-2 justify-center">

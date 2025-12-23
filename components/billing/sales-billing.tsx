@@ -10,6 +10,7 @@ import { createBill, createBillItems, getBillById, getBillItems, updateBill } fr
 import { toast } from '@/components/ui/use-toast'
 import { InvoicePrint } from './invoice-print'
 import { PurchaseBillPrint } from './purchase-bill-print'
+import { LayawayForm } from './layaway-form'
 
 interface BillItem {
   id: string
@@ -20,6 +21,10 @@ interface BillItem {
   making_charges: number
   gst_rate: number
   line_total: number
+  purity?: string
+  hsn_code?: string
+  sl_no?: number
+  metal_type?: string
 }
 
 interface SalesBillingProps {
@@ -48,8 +53,12 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
     weight: 0, 
     weightInput: '', // Raw string input
     rate: 0, 
+    rateInput: '', // Raw string input for rate
     making_charges: 0,
     makingChargesInput: '', // Raw string input
+    purity: '',
+    hsn_code: '711319',
+    metal_type: 'gold', // 'gold' or 'silver'
   })
   const [isLoadingItem, setIsLoadingItem] = useState(false)
   const [dailyGoldRate, setDailyGoldRate] = useState(0) // Daily gold rate per gram
@@ -113,6 +122,20 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
     weightInput: '',
     rateInput: '',
     makingChargesInput: '',
+    purity: '',
+    hsn_code: '711319',
+    metal_type: 'gold',
+  })
+  
+  // Layaway state
+  const [isLayaway, setIsLayaway] = useState(false)
+  const [layawayData, setLayawayData] = useState({
+    advancePaymentDate: '',
+    itemTakenDate: '',
+    finalPaymentDate: '',
+    advanceAmount: 0,
+    remainingAmount: 0,
+    trackingFlag: false
   })
 
   const resetBillForm = () => {
@@ -137,6 +160,8 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
       rate: 0,
       making_charges: 0,
       makingChargesInput: '',
+      purity: '',
+      hsn_code: '711319',
     })
     setPaymentMethods([])
     setDiscount(0)
@@ -172,9 +197,22 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
       weightInput: '',
       rateInput: '',
       makingChargesInput: '',
+      purity: '',
+      hsn_code: '711319',
     })
     setShowInvoice(false)
     setShowPurchaseBill(false)
+    
+    // Reset layaway data
+    setIsLayaway(false)
+    setLayawayData({
+      advancePaymentDate: '',
+      itemTakenDate: '',
+      finalPaymentDate: '',
+      advanceAmount: 0,
+      remainingAmount: 0,
+      trackingFlag: false
+    })
   }
 
   // Get user info from session and fetch daily gold rate
@@ -325,6 +363,19 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
             total: oldGold.total_value || 0,
             hsn_code: oldGold.hsn_code || '7113',
             particulars: oldGold.notes || '',
+          })
+        }
+
+        // Load layaway data if exists
+        if (billData.advance_payment_date || billData.advance_amount) {
+          setIsLayaway(true)
+          setLayawayData({
+            advancePaymentDate: billData.advance_payment_date?.split('T')[0] || '',
+            itemTakenDate: billData.item_taken_date?.split('T')[0] || '',
+            finalPaymentDate: billData.final_payment_date?.split('T')[0] || '',
+            advanceAmount: billData.advance_amount || 0,
+            remainingAmount: billData.remaining_amount || 0,
+            trackingFlag: billData.tracking_flag || false,
           })
         }
 
@@ -684,19 +735,20 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
       return
     }
     
-      // Use daily gold rate for calculation
-      const goldRate = dailyGoldRate || newItem.rate || 0
-      if (!goldRate) {
+      // Use custom rate input if provided, otherwise daily gold rate
+      const customRate = parseFloat(newItem.rateInput) || 0
+      const rate = customRate || dailyGoldRate || newItem.rate || 0
+      if (!rate) {
         toast({
-          title: 'Gold Rate Required',
-          description: 'Please set the daily gold rate first',
+          title: 'Rate Required',
+          description: 'Please set the daily gold rate or enter a custom rate',
           variant: 'destructive',
         })
         return
       }
     
       const makingCharges = parseFloat(newItem.makingChargesInput) || 0
-      const lineTotal = calculateLineTotal(weight, goldRate, makingCharges)
+      const lineTotal = calculateLineTotal(weight, rate, makingCharges)
 
       setItems([
         ...items,
@@ -705,10 +757,14 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
           barcode: newItem.barcode || '',
           item_name: newItem.item_name.trim(),
           weight,
-          rate: goldRate, // Store the gold rate used
+          rate: rate, // Store the calculated rate used
           making_charges: makingCharges,
           gst_rate: 0, // No item-level GST, GST is applied at bill level
           line_total: lineTotal,
+          purity: newItem.purity || '',
+          hsn_code: newItem.hsn_code || '711319',
+          sl_no: items.length + 1, // Auto-incrementing serial number per invoice
+          metal_type: newItem.metal_type,
         },
       ])
       toast({
@@ -723,8 +779,12 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
         weight: 0,
         weightInput: '',
         rate: 0,
+        rateInput: '',
         making_charges: 0,
         makingChargesInput: '',
+        purity: '',
+        hsn_code: '711319',
+        metal_type: 'gold',
       })
   }
 
@@ -738,6 +798,8 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
         weightInput: '',
         rateInput: '',
         makingChargesInput: '',
+        purity: '',
+        hsn_code: '711319',
       })
     }
   }
@@ -753,6 +815,9 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
       weightInput: (item.weight || 0).toString(),
       rateInput: (item.rate || 0).toString(),
       makingChargesInput: (item.making_charges || 0).toString(),
+      purity: item.purity || '',
+      hsn_code: item.hsn_code || '711319',
+      metal_type: item.metal_type || 'gold',
     })
   }
 
@@ -764,6 +829,8 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
       weightInput: '',
       rateInput: '',
       makingChargesInput: '',
+      purity: '',
+      hsn_code: '711319',
     })
   }
 
@@ -815,6 +882,9 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
             rate: customRate,
             making_charges: makingCharges,
             line_total: lineTotal,
+            purity: editingItemData.purity || '',
+            hsn_code: editingItemData.hsn_code || '711319',
+            metal_type: editingItemData.metal_type || 'gold',
           }
         : i
     )
@@ -1082,6 +1152,14 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
         payment_method: paymentMethods.length > 0 ? JSON.stringify(paymentMethods) : undefined,
         payment_reference: undefined, // No longer used, data in payment_method JSON
         bill_status: 'finalized' as const,
+        
+        // Layaway data
+        advance_payment_date: isLayaway ? layawayData.advancePaymentDate : undefined,
+        item_taken_date: isLayaway ? layawayData.itemTakenDate : undefined,
+        final_payment_date: isLayaway ? layawayData.finalPaymentDate : undefined,
+        advance_amount: isLayaway ? layawayData.advanceAmount : undefined,
+        remaining_amount: isLayaway ? layawayData.remainingAmount : undefined,
+        tracking_flag: isLayaway ? layawayData.trackingFlag : undefined,
       }
 
       let billId: number
@@ -1106,7 +1184,7 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
       }
 
       // Prepare bill items
-      const billItemsData = items.map(item => ({
+      const billItemsData = items.map((item, index) => ({
         barcode: item.barcode && item.barcode.trim() ? item.barcode : undefined,
         item_name: item.item_name,
         weight: item.weight,
@@ -1114,6 +1192,9 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
         making_charges: item.making_charges || 0,
         gst_rate: 0, // GST is at bill level
         line_total: item.line_total,
+        purity: item.purity || '',
+        hsn_code: item.hsn_code || '711319',
+        sl_no: index + 1, // Auto-incrementing serial number per invoice
       }))
 
       // Add MC/Value Added as an item if present
@@ -1126,6 +1207,9 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
           making_charges: 0,
           gst_rate: 0,
           line_total: mcValueAdded.total,
+          purity: '',
+          hsn_code: '711319',
+          sl_no: items.length + 1, // Continue the serial numbering
         })
       }
 
@@ -1524,6 +1608,9 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
                           <th className="text-left py-4 px-4 font-semibold text-foreground">Weight</th>
                           <th className="text-left py-4 px-4 font-semibold text-foreground">Rate</th>
                           <th className="text-left py-4 px-4 font-semibold text-foreground">Making</th>
+                          <th className="text-left py-4 px-4 font-semibold text-foreground">Purity</th>
+                          <th className="text-left py-4 px-4 font-semibold text-foreground">Metal</th>
+                          <th className="text-left py-4 px-4 font-semibold text-foreground">HSN</th>
                           <th className="text-left py-4 px-4 font-semibold text-foreground">Total</th>
                           <th className="text-center py-4 px-4 font-semibold text-foreground">Action</th>
                         </tr>
@@ -1612,6 +1699,46 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
                                   />
                                 ) : (
                                   `₹${item.making_charges.toFixed(2)}`
+                                )}
+                              </td>
+                              <td className="py-4 px-4 text-foreground">
+                                {isEditingRow ? (
+                                  <Input
+                                    type="text"
+                                    value={editingItemData.purity}
+                                    onChange={(e) => setEditingItemData(prev => ({ ...prev, purity: e.target.value }))}
+                                    className="h-9 text-sm"
+                                    placeholder="Purity"
+                                  />
+                                ) : (
+                                  item.purity || '-'
+                                )}
+                              </td>
+                              <td className="py-4 px-4 text-foreground">
+                                {isEditingRow ? (
+                                  <select
+                                    value={editingItemData.metal_type}
+                                    onChange={(e) => setEditingItemData(prev => ({ ...prev, metal_type: e.target.value }))}
+                                    className="w-full h-9 px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring text-sm"
+                                  >
+                                    <option value="gold">Gold</option>
+                                    <option value="silver">Silver</option>
+                                  </select>
+                                ) : (
+                                  item.metal_type?.toUpperCase() || 'GOLD'
+                                )}
+                              </td>
+                              <td className="py-4 px-4 text-foreground">
+                                {isEditingRow ? (
+                                  <Input
+                                    type="text"
+                                    value={editingItemData.hsn_code}
+                                    onChange={(e) => setEditingItemData(prev => ({ ...prev, hsn_code: e.target.value }))}
+                                    className="h-9 text-sm"
+                                    placeholder="HSN"
+                                  />
+                                ) : (
+                                  item.hsn_code || '711319'
                                 )}
                               </td>
                               <td className="py-4 px-4 font-bold text-primary text-lg">
@@ -1708,18 +1835,33 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
                     className="h-11"
                   />
                   <div className="relative">
-                          <Input
+                    <Input
                       type="text"
-                      placeholder="Gold Rate (auto from daily rate)"
-                      value={dailyGoldRate || ''}
-                      disabled
-                      className="h-11 bg-muted"
+                      placeholder="Custom Rate (₹/gram)"
+                      value={newItem.rateInput}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                          setNewItem({ ...newItem, rateInput: val });
+                        }
+                      }}
+                      className="h-11"
                     />
-                    {!dailyGoldRate && (
+                    {!dailyGoldRate && !newItem.rateInput && (
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-destructive">
-                        Not Set
+                        Daily rate not set
                       </span>
                     )}
+                  </div>
+                  <div>
+                    <select
+                      value={newItem.metal_type}
+                      onChange={(e) => setNewItem({ ...newItem, metal_type: e.target.value })}
+                      className="w-full h-11 px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="gold">Gold</option>
+                      <option value="silver">Silver</option>
+                    </select>
                   </div>
                           <Input
                     type="text"
@@ -1731,6 +1873,20 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
                         setNewItem({ ...newItem, makingChargesInput: val })
                       }
                     }}
+                    className="h-11"
+                  />
+                  <Input
+                    type="text"
+                    placeholder="Purity (e.g., 916, 22K, 18K) *"
+                    value={newItem.purity}
+                    onChange={(e) => setNewItem({ ...newItem, purity: e.target.value })}
+                    className="h-11"
+                  />
+                  <Input
+                    type="text"
+                    placeholder="HSN Code (default: 711319)"
+                    value={newItem.hsn_code}
+                    onChange={(e) => setNewItem({ ...newItem, hsn_code: e.target.value })}
                     className="h-11"
                   />
                 </div>
@@ -2002,6 +2158,43 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
               </div>
             </Card>
 
+            {/* Layaway / Advance Booking Section */}
+            <LayawayForm 
+              isVisible={true}
+              onCalculate={(data) => {
+                // Calculate remaining amount
+                const remaining = data.totalAmount - data.advanceAmount;
+                
+                // Calculate tracking flag (true if finalPaymentDate >= 3 days after advancePaymentDate)
+                let trackingFlag = false;
+                if (data.advancePaymentDate && data.finalPaymentDate) {
+                  const advanceDate = new Date(data.advancePaymentDate);
+                  const finalDate = new Date(data.finalPaymentDate);
+                  const diffTime = Math.abs(finalDate.getTime() - advanceDate.getTime());
+                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                  trackingFlag = diffDays >= 3;
+                }
+                
+                setLayawayData({
+                  advancePaymentDate: data.advancePaymentDate,
+                  itemTakenDate: data.itemTakenDate,
+                  finalPaymentDate: data.finalPaymentDate,
+                  advanceAmount: data.advanceAmount,
+                  remainingAmount: remaining,
+                  trackingFlag: trackingFlag
+                });
+                
+                setIsLayaway(true);
+              }}
+              initialData={{
+                advancePaymentDate: layawayData.advancePaymentDate,
+                itemTakenDate: layawayData.itemTakenDate,
+                finalPaymentDate: layawayData.finalPaymentDate,
+                advanceAmount: layawayData.advanceAmount,
+                totalAmount: amountPayable
+              }}
+            />
+
         </div>
 
           {/* Sidebar - Professional Design */}
@@ -2147,7 +2340,7 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
                     // Hide invoice after printing
                     setTimeout(() => {
                       setShowInvoice(false)
-                      resetBillForm()
+                      // Removed resetBillForm() to prevent auto-refresh after save and print
                     }, 500)
                   }, 300)
                 }}
@@ -2195,6 +2388,8 @@ export function SalesBilling({ editBillId }: SalesBillingProps = {}) {
           sgst={sgst}
           igst={igst}
           paymentMethods={paymentMethods}
+          isLayaway={isLayaway}
+          layawayData={isLayaway ? layawayData : undefined}
         />
       )}
 
